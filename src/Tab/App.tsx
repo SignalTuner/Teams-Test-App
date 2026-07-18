@@ -24,7 +24,11 @@ type AuthResponse = {
   sessionToken?: string;
   jwt?: string;
   jwtToken?: string;
-  user?: CurrentUser;
+};
+
+type ActivationCodeResponse = {
+  activationCode?: string;
+  ActivationCode?: string;
 };
 
 type TeamsMeetingContext = {
@@ -262,22 +266,6 @@ function readArray(record: JsonRecord, ...keys: string[]): unknown[] {
   return [];
 }
 
-function decodeJwtPayload(token: string): JsonRecord {
-  const payload = token.split(".")[1];
-
-  if (!payload) {
-    return {};
-  }
-
-  try {
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    return asRecord(JSON.parse(window.atob(padded)));
-  } catch {
-    return {};
-  }
-}
-
 function normalizeCurrentUser(value: unknown): CurrentUser {
   const record = asRecord(value);
 
@@ -294,27 +282,9 @@ function normalizeCurrentUser(value: unknown): CurrentUser {
   };
 }
 
-function buildTeamsUserHint(teamsSsoToken: string): CurrentUser | null {
-  const claims = decodeJwtPayload(teamsSsoToken);
-  const email = readString(claims, "email", "upn", "preferred_username", "unique_name");
-  const displayName = readString(claims, "name");
-  const firstName = readString(claims, "given_name");
-  const lastName = readString(claims, "family_name");
-
-  if (!email && !displayName && !firstName && !lastName) {
-    return null;
-  }
-
-  return {
-    userId: 0,
-    email,
-    displayName: displayName ?? email,
-    firstName,
-    lastName,
-    credits: 0,
-    activationCode: null,
-    clientIsActive: false,
-  };
+function normalizeActivationCodeResponse(value: unknown): string | null {
+  const record = asRecord(value);
+  return readString(record, "activationCode", "ActivationCode", "userActivationCode", "UserActivationCode");
 }
 
 function mergeCurrentUser(primary: CurrentUser, fallback: CurrentUser | null): CurrentUser {
@@ -333,33 +303,6 @@ function mergeCurrentUser(primary: CurrentUser, fallback: CurrentUser | null): C
     activationCode: primary.activationCode ?? fallback.activationCode,
     clientIsActive: primary.clientIsActive || fallback.clientIsActive,
   };
-}
-
-function normalizeAuthResponseUser(response: AuthResponse): CurrentUser | null {
-  const responseRecord = asRecord(response);
-  const nestedUser = response.user ? normalizeCurrentUser(response.user) : null;
-  const topLevelUser = normalizeCurrentUser(responseRecord);
-  const userId = nestedUser?.userId || topLevelUser.userId;
-
-  if (!userId && !nestedUser?.email && !topLevelUser.email) {
-    return null;
-  }
-
-  return mergeCurrentUser(
-    {
-      ...topLevelUser,
-      userId,
-      email: topLevelUser.email ?? nestedUser?.email ?? null,
-      displayName: topLevelUser.displayName ?? nestedUser?.displayName ?? null,
-      firstName: topLevelUser.firstName ?? nestedUser?.firstName,
-      lastName: topLevelUser.lastName ?? nestedUser?.lastName,
-      credits: topLevelUser.credits || nestedUser?.credits || 0,
-      subscriptionPlan: topLevelUser.subscriptionPlan ?? nestedUser?.subscriptionPlan,
-      activationCode: topLevelUser.activationCode ?? nestedUser?.activationCode,
-      clientIsActive: topLevelUser.clientIsActive || nestedUser?.clientIsActive || false,
-    },
-    nestedUser
-  );
 }
 
 function normalizeServiceIncident(value: unknown): ServiceIncident {
@@ -940,7 +883,7 @@ export default function App() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isClientPromptDismissed, setIsClientPromptDismissed] = React.useState(false);
   const [activationCodeError, setActivationCodeError] = React.useState<string | null>(null);
-  const [authUserFallback, setAuthUserFallback] = React.useState<CurrentUser | null>(null);
+  const [accountUser, setAccountUser] = React.useState<CurrentUser | null>(null);
 
   const parseCreditError = React.useCallback((caught: unknown): boolean => {
     const errorWithBody = caught as Error & { body?: string };
@@ -966,6 +909,69 @@ export default function App() {
     return false;
   }, []);
 
+  const mergeActivationCode = React.useCallback((activationCode: string | null) => {
+    if (!activationCode) {
+      return;
+    }
+
+    setDashboard((current) =>
+      current
+        ? {
+            ...current,
+            currentUser: {
+              ...current.currentUser,
+              activationCode,
+            },
+          }
+        : current
+    );
+    setAccountUser((current) =>
+      current
+        ? {
+            ...current,
+            activationCode,
+          }
+        : current
+    );
+  }, []);
+
+  const refreshAccountInfo = React.useCallback(
+    async (token: string) => {
+      const account = normalizeCurrentUser(
+        await fetchJson<unknown>(`${apiBaseUrl}/api/auth/me`, {
+          headers: buildAuthHeaders(token),
+        })
+      );
+
+      setAccountUser(account);
+      setDashboard((current) =>
+        current
+          ? {
+              ...current,
+              currentUser: mergeCurrentUser(current.currentUser, account),
+            }
+          : current
+      );
+
+      return account;
+    },
+    [apiBaseUrl]
+  );
+
+  const refreshActivationCode = React.useCallback(
+    async (token: string) => {
+      const activationCode = normalizeActivationCodeResponse(
+        await fetchJson<ActivationCodeResponse>(`${apiBaseUrl}/api/User/activation-code`, {
+          headers: buildAuthHeaders(token),
+        })
+      );
+
+      mergeActivationCode(activationCode);
+      return activationCode;
+    },
+    [apiBaseUrl, mergeActivationCode]
+  );
+
   const refreshDashboard = React.useCallback(
     async (meetingSessionId: number, token: string) => {
       const data = normalizeDashboardData(await fetchJson<unknown>(`${apiBaseUrl}/api/TeamsMeetings/${meetingSessionId}/dashboard`, {
@@ -973,11 +979,11 @@ export default function App() {
       }));
       setDashboard((current) => ({
         ...data,
-        currentUser: mergeCurrentUser(data.currentUser, current?.currentUser ?? authUserFallback),
+        currentUser: mergeCurrentUser(data.currentUser, current?.currentUser ?? accountUser),
       }));
       return data;
     },
-    [apiBaseUrl, authUserFallback]
+    [accountUser, apiBaseUrl]
   );
 
   const joinMeetingSession = React.useCallback(
@@ -989,31 +995,30 @@ export default function App() {
       }));
       const mergedData = {
         ...data,
-        currentUser: mergeCurrentUser(data.currentUser, fallbackUser ?? authUserFallback),
+        currentUser: mergeCurrentUser(data.currentUser, fallbackUser ?? accountUser),
       };
       setDashboard(mergedData);
       return mergedData;
     },
-    [apiBaseUrl, authUserFallback]
+    [accountUser, apiBaseUrl]
   );
 
   const completeAuth = React.useCallback(
-    async (response: AuthResponse, userHint: CurrentUser | null = null) => {
+    async (response: AuthResponse) => {
       if (!meetingContext) {
         throw new Error("Teams meeting context is unavailable.");
       }
 
       const signalTunerSessionToken = getSignalTunerSessionToken(response);
-      const authUser = mergeCurrentUser(normalizeAuthResponseUser(response) ?? normalizeCurrentUser({}), userHint);
 
       window.localStorage.setItem(SIGNALTUNER_SESSION_TOKEN_KEY, signalTunerSessionToken);
       setSessionToken(signalTunerSessionToken);
       setIsClientPromptDismissed(false);
       setActivationCodeError(null);
-      setAuthUserFallback(authUser);
-      await joinMeetingSession(signalTunerSessionToken, meetingContext, authUser);
+      const account = await refreshAccountInfo(signalTunerSessionToken);
+      await joinMeetingSession(signalTunerSessionToken, meetingContext, account);
     },
-    [joinMeetingSession, meetingContext]
+    [joinMeetingSession, meetingContext, refreshAccountInfo]
   );
 
   React.useEffect(() => {
@@ -1058,14 +1063,35 @@ export default function App() {
     }
 
     setIsLoading(true);
-    joinMeetingSession(sessionToken, meetingContext)
+    refreshAccountInfo(sessionToken)
+      .then((account) => joinMeetingSession(sessionToken, meetingContext, account))
       .catch((caught) => {
         window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
         setSessionToken(null);
         setError(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => setIsLoading(false));
-  }, [dashboard, joinMeetingSession, meetingContext, sessionToken]);
+  }, [dashboard, joinMeetingSession, meetingContext, refreshAccountInfo, sessionToken]);
+
+  React.useEffect(() => {
+    if (!dashboard || !sessionToken) {
+      return;
+    }
+
+    const currentUser = mergeCurrentUser(dashboard.currentUser, accountUser);
+
+    if (!currentUser.clientIsActive && !currentUser.activationCode) {
+      setIsLoading(true);
+      refreshActivationCode(sessionToken)
+        .then((activationCode) => {
+          setActivationCodeError(activationCode ? null : "Unable to load your activation code.");
+        })
+        .catch((caught) => {
+          setActivationCodeError(caught instanceof Error ? caught.message : String(caught));
+        })
+        .finally(() => setIsLoading(false));
+    }
+  }, [accountUser, dashboard, refreshActivationCode, sessionToken]);
 
   React.useEffect(() => {
     if (!dashboard || !sessionToken) {
@@ -1090,7 +1116,6 @@ export default function App() {
 
     try {
       const teamsSsoToken = await teamsJs.authentication.getAuthToken();
-      const teamsUserHint = buildTeamsUserHint(teamsSsoToken);
       const response = await fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/teams-sso`, {
         method: "POST",
         headers: buildAuthHeaders(null),
@@ -1101,7 +1126,7 @@ export default function App() {
         }),
       });
 
-      await completeAuth(response, teamsUserHint);
+      await completeAuth(response);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -1274,7 +1299,7 @@ export default function App() {
     setSubscriptionPrompt(null);
     setIsClientPromptDismissed(false);
     setActivationCodeError(null);
-    setAuthUserFallback(null);
+    setAccountUser(null);
   }, []);
 
   if (isConfigPage) {
@@ -1295,8 +1320,9 @@ export default function App() {
     );
   }
 
-  const shouldShowClientPrompt = !dashboard.currentUser.clientIsActive && !isClientPromptDismissed;
-  const currentUser = mergeCurrentUser(dashboard.currentUser, authUserFallback);
+  const currentUser = mergeCurrentUser(dashboard.currentUser, accountUser);
+  const displayDashboard = { ...dashboard, currentUser };
+  const shouldShowClientPrompt = !currentUser.clientIsActive && !isClientPromptDismissed;
 
   return (
     <>
@@ -1309,7 +1335,15 @@ export default function App() {
             onContinue={() => setIsClientPromptDismissed(true)}
             onRefresh={async () => {
               setActivationCodeError(null);
-              await refreshDashboard(dashboard.meetingSessionId, sessionToken);
+              const refreshedDashboard = await refreshDashboard(dashboard.meetingSessionId, sessionToken);
+
+              if (!mergeCurrentUser(refreshedDashboard.currentUser, accountUser).activationCode) {
+                const activationCode = await refreshActivationCode(sessionToken);
+
+                if (!activationCode) {
+                  setActivationCodeError("Unable to load your activation code.");
+                }
+              }
             }}
             onSignOut={signOut}
           />
@@ -1318,7 +1352,7 @@ export default function App() {
       {!shouldShowClientPrompt && (
         <Dashboard
           analysis={analysis}
-          dashboard={dashboard}
+          dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
           onAddCredits={addCredits}
