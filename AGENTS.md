@@ -267,6 +267,7 @@ Before adding or replacing a dependency:
 
 Use these terms consistently unless an authoritative existing contract requires a different name:
 
+- **STMSTA**: shorthand for the SignalTuner Microsoft Teams app. Use it only as an abbreviation in discussion or notes; keep formal product names, manifests, identifiers, and user-facing labels unchanged unless explicitly requested.
 - **User**: a SignalTuner account holder.
 - **Team**: a SignalTuner grouping of users/devices.
 - **Device**: an endpoint running a SignalTuner local client.

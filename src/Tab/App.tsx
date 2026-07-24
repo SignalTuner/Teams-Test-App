@@ -2,10 +2,12 @@ import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
 
 import "./App.css";
+import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 
 type AuthProvider = "teams_sso" | "google" | "github" | "email_magic_code";
 type ClientDataStatus = "active" | "inactive" | "no_data";
 type AnalysisStatus = "Excellent" | "Fair" | "Poor" | "Critical" | "Offline" | "No data" | string;
+type TeamsServiceStatus = "operational" | "activeIncident" | "outage";
 
 type CurrentUser = {
   userId: number;
@@ -21,9 +23,22 @@ type CurrentUser = {
 
 type AuthResponse = {
   token?: string;
+  Token?: string;
   sessionToken?: string;
   jwt?: string;
   jwtToken?: string;
+  email?: string;
+  Email?: string;
+  UserID?: number;
+  UserId?: number;
+  userId?: number;
+  ActivationCode?: string;
+  activationCode?: string;
+  UserFirstName?: string;
+  UserLastName?: string;
+  IsTeamAdmin?: boolean;
+  UserTeamID?: number;
+  UserHasSeenOnboarding?: boolean;
 };
 
 type ActivationCodeResponse = {
@@ -44,14 +59,18 @@ type ServiceIncident = {
   status: string;
   impact?: string | null;
   startedAt?: string | null;
+  link?: string | null;
+  uniqueIdentifier?: string | null;
 };
 
 type TeamsServiceHealth = {
   serviceId: 3;
   serviceName: "Microsoftteams";
-  serviceDisplayName: "Microsoft Teams";
+  serviceDisplayName: string;
   currentStatus: AnalysisStatus;
   unresolvedIncidents: ServiceIncident[];
+  activeIncidents: ServiceIncident[];
+  recentIncidents: ServiceIncident[];
 };
 
 type MeetingParticipant = {
@@ -71,10 +90,6 @@ type DashboardData = {
   currentUser: CurrentUser;
   teamsServiceHealth: TeamsServiceHealth;
   participants: MeetingParticipant[];
-};
-
-type JoinResponse = DashboardData & {
-  message?: string;
 };
 
 type Issue = {
@@ -121,10 +136,201 @@ type SubscriptionPrompt = {
   availableCredits: number;
 };
 
-type EmailCodeStep = "request" | "verify";
+const EXAMPLE_ACTIVE_INCIDENTS: ServiceIncident[] = [
+  {
+    incidentId: -1,
+    title: "Users may experience choppy audio in meetings",
+    status: "Active",
+    impact: "Some calls may have degraded audio quality.",
+    startedAt: "2026-07-24T10:32:00Z",
+    uniqueIdentifier: "ST-DEMO-TEAMS-AUDIO-001",
+  },
+  {
+    incidentId: -2,
+    title: "Delays in message delivery in Teams",
+    status: "Active",
+    impact: "Chat messages may be delayed for some users.",
+    startedAt: "2026-07-24T09:15:00Z",
+    uniqueIdentifier: "ST-DEMO-TEAMS-CHAT-002",
+  },
+  {
+    incidentId: -3,
+    title: "Slow loading of Teams channels and tabs",
+    status: "Active",
+    impact: "Teams channels and embedded app tabs may load slowly.",
+    startedAt: "2026-07-23T21:47:00Z",
+    uniqueIdentifier: "ST-DEMO-TEAMS-TABS-003",
+  },
+  {
+    incidentId: -4,
+    title: "Meeting join failures for a subset of users",
+    status: "Active",
+    impact: "Some users may need to retry joining meetings.",
+    startedAt: "2026-07-23T18:25:00Z",
+    uniqueIdentifier: "ST-DEMO-TEAMS-JOIN-004",
+  },
+  {
+    incidentId: -5,
+    title: "Intermittent screen sharing degradation",
+    status: "Active",
+    impact: "Screen sharing may briefly freeze or reduce quality.",
+    startedAt: "2026-07-23T15:10:00Z",
+    uniqueIdentifier: "ST-DEMO-TEAMS-SHARE-005",
+  },
+];
+
+type AuthPageMode = "login" | "create-account";
+type AuthBusyState = "idle" | "initializing-teams" | "checking-session" | "auto-sso" | "teams-sso" | "email-login" | "email-register" | "success";
+type TeamsTheme = "default" | "dark" | "contrast";
+type SignalTunerThemePreference = "light" | "dark";
 type JsonRecord = Record<string, unknown>;
 
 const SIGNALTUNER_SESSION_TOKEN_KEY = "signaltunerSessionToken";
+const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
+const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
+const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
+const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters.";
+
+let teamsInitializationPromise: Promise<teamsJs.app.Context> | null = null;
+
+function getCurrentYear(): number {
+  return new Date().getFullYear();
+}
+
+function getReturnUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("returnUrl") || `${window.location.origin}/tabs/home`;
+}
+
+function buildAuthPath(path: AuthPageMode, returnUrl: string): string {
+  const params = new URLSearchParams({ returnUrl });
+  return `/${path}?${params.toString()}`;
+}
+
+function navigateAuth(path: AuthPageMode, returnUrl: string): void {
+  window.history.pushState({}, "", buildAuthPath(path, returnUrl));
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function restoreReturnUrl(returnUrl: string): void {
+  try {
+    const target = new URL(returnUrl, window.location.origin);
+
+    if (target.origin === window.location.origin) {
+      window.history.replaceState({}, "", `${target.pathname}${target.search}${target.hash}`);
+    }
+  } catch {
+    window.history.replaceState({}, "", "/tabs/home");
+  }
+}
+
+function getAuthPageMode(): AuthPageMode {
+  const path = window.location.pathname.toLowerCase();
+  return path.includes("create-account") ? "create-account" : "login";
+}
+
+function sanitizeAuthError(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error)) {
+    return fallback;
+  }
+
+  const status = (caught as Error & { status?: number }).status;
+
+  if (status === 401 || status === 403) {
+    return "Your email or password was not recognized.";
+  }
+
+  if (status && status >= 500) {
+    return "SignalTuner is temporarily unavailable. Please try again.";
+  }
+
+  return fallback;
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function mapTeamsTheme(theme: string | undefined): TeamsTheme {
+  const normalized = (theme ?? "default").toLowerCase();
+
+  if (normalized === "dark") {
+    return "dark";
+  }
+
+  if (normalized === "contrast" || normalized === "highcontrast" || normalized === "high-contrast") {
+    return "contrast";
+  }
+
+  return "default";
+}
+
+function applyTeamsTheme(theme: TeamsTheme): void {
+  document.documentElement.dataset.teamsTheme = theme;
+}
+
+function getStoredThemePreference(): SignalTunerThemePreference {
+  return window.localStorage.getItem(SIGNALTUNER_THEME_PREFERENCE_KEY) === "dark" ? "dark" : "light";
+}
+
+function getEffectiveTheme(teamsTheme: TeamsTheme, preference: SignalTunerThemePreference): TeamsTheme {
+  if (teamsTheme === "contrast") {
+    return "contrast";
+  }
+
+  return preference === "dark" ? "dark" : "default";
+}
+
+async function initializeTeams(): Promise<teamsJs.app.Context> {
+  if (!teamsInitializationPromise) {
+    teamsInitializationPromise = teamsJs.app.initialize().then(() => teamsJs.app.getContext());
+  }
+
+  return teamsInitializationPromise;
+}
+
+async function getTeamsSsoToken(): Promise<string> {
+  await initializeTeams();
+  return teamsJs.authentication.getAuthToken();
+}
+
+function subscribeToTeamsThemeChanges(onThemeChange: (theme: TeamsTheme) => void): () => void {
+  teamsJs.app.registerOnThemeChangeHandler((theme) => {
+    onThemeChange(mapTeamsTheme(theme));
+  });
+
+  return () => teamsJs.app.registerOnThemeChangeHandler(() => undefined);
+}
+
+async function authenticateWithTeamsSso(apiBaseUrl: string, meetingContext: TeamsMeetingContext | null): Promise<AuthResponse> {
+  const teamsSsoToken = await getTeamsSsoToken();
+  return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/teams-sso`, {
+    method: "POST",
+    headers: buildAuthHeaders(null),
+    body: JSON.stringify({
+      teamsSsoToken,
+      teamsTenantId: meetingContext?.teamsTenantId ?? null,
+      teamsMeetingId: meetingContext?.teamsMeetingId ?? null,
+    }),
+  });
+}
+
+async function signInWithEmail(apiBaseUrl: string, email: string, password: string): Promise<AuthResponse> {
+  return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/Login`, {
+    method: "POST",
+    headers: buildAuthHeaders(null),
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+async function createAccountWithEmail(
+  _apiBaseUrl: string,
+  _request: { email: string; password: string }
+): Promise<AuthResponse> {
+  // TODO: Add a backend JSON endpoint for Teams app email registration.
+  // Existing /api/User/AddUser requires form-only profile fields that the requested minimal Teams registration page must not collect.
+  throw new Error("Email account creation is not available in the Teams app yet.");
+}
 
 function normalizeBaseUrl(baseUrl: string | undefined): string {
   return baseUrl ? baseUrl.replace(/\/+$/, "") : "";
@@ -160,26 +366,112 @@ function getParticipantName(participant: MeetingParticipant): string {
   return participant.displayName ?? participant.email ?? `User ${participant.userId}`;
 }
 
-function getSeverityClass(value: AnalysisStatus | null | undefined): string {
-  const normalized = String(value ?? "").toLowerCase();
+function getInitials(name: string | null | undefined, email: string | null | undefined): string {
+  const source = name?.trim() || email?.trim() || "SignalTuner User";
+  const parts = source
+    .replace(/@.*/, "")
+    .split(/\s|[._-]/)
+    .filter(Boolean);
 
-  if (normalized === "excellent") {
-    return "severityGreen";
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "ST";
+}
+
+function getSignalTone(score: number | null | undefined): "good" | "fair" | "poor" | "none" {
+  if (score === null || score === undefined || Number.isNaN(score)) {
+    return "none";
   }
 
-  if (normalized === "fair") {
-    return "severityYellow";
+  if (score >= 75) {
+    return "good";
   }
 
-  if (normalized === "poor") {
-    return "severityOrange";
+  if (score >= 55) {
+    return "fair";
   }
 
-  if (normalized === "critical") {
-    return "severityRed";
+  return "poor";
+}
+
+function normalizeTeamsServiceStatus(health: TeamsServiceHealth): TeamsServiceStatus {
+  const status = String(health.currentStatus ?? "").toLowerCase();
+  const hasActiveIncidents = health.activeIncidents.length > 0 || health.unresolvedIncidents.length > 0;
+
+  if (status.includes("outage") || status.includes("critical") || status.includes("down")) {
+    return "outage";
   }
 
-  return "severityBlue";
+  if (status.includes("incident") || status.includes("degrad") || status.includes("issue") || hasActiveIncidents) {
+    return "activeIncident";
+  }
+
+  return "operational";
+}
+
+function getTeamsStatusMeta(status: TeamsServiceStatus): { label: string; className: string; description: string } {
+  if (status === "outage") {
+    return {
+      label: "Outage",
+      className: "statusOutage",
+      description: "Microsoft Teams is reporting a service outage that may interrupt meeting quality.",
+    };
+  }
+
+  if (status === "activeIncident") {
+    return {
+      label: "Active Incident",
+      className: "statusIncident",
+      description: "Some users may experience degraded performance.",
+    };
+  }
+
+  return {
+    label: "Operational",
+    className: "statusOperational",
+    description: "Microsoft Teams service health is currently operational.",
+  };
+}
+
+function getTelemetryValue(telemetry: TelemetryRecord | null, keys: string[], fallback = "No data"): string {
+  if (!telemetry) {
+    return fallback;
+  }
+
+  for (const key of keys) {
+    const value = telemetry[key];
+
+    if (value !== undefined && value !== null && value !== "") {
+      return formatValue(value);
+    }
+  }
+
+  return fallback;
+}
+
+function getParticipantTelemetry(analysis: AnalysisResult | null, participantId: number): TelemetryRecord | null {
+  if (!analysis) {
+    return null;
+  }
+
+  if (analysis.mode === "user") {
+    return analysis.data.targetUser.userId === participantId ? analysis.data.telemetry : null;
+  }
+
+  return analysis.data.analyzedUsers.find((result) => result.participant.userId === participantId)?.telemetry ?? null;
+}
+
+function getParticipantIssues(analysis: AnalysisResult | null, participantId: number): Issue[] {
+  if (!analysis) {
+    return [];
+  }
+
+  if (analysis.mode === "user") {
+    return analysis.data.targetUser.userId === participantId ? analysis.data.issues : [];
+  }
+
+  return analysis.data.analyzedUsers.find((result) => result.participant.userId === participantId)?.issues ?? [];
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -314,6 +606,8 @@ function normalizeServiceIncident(value: unknown): ServiceIncident {
     status: readString(record, "status", "Status", "serviceIncidentStatus", "ServiceIncidentStatus") ?? "Unresolved",
     impact: readString(record, "impact", "Impact", "serviceIncidentImpact", "ServiceIncidentImpact"),
     startedAt: readString(record, "startedAt", "StartedAt", "createdAt", "CreatedAt"),
+    link: readString(record, "link", "Link", "serviceIncidentLink", "ServiceIncidentLink"),
+    uniqueIdentifier: readString(record, "uniqueIdentifier", "UniqueIdentifier", "serviceIncidentUniqueIdentifier", "ServiceIncidentUniqueIdentifier"),
   };
 }
 
@@ -322,6 +616,8 @@ function normalizeTeamsServiceHealth(value: unknown): TeamsServiceHealth {
   const unresolvedIncidents = readArray(record, "unresolvedIncidents", "UnresolvedIncidents", "incidents", "Incidents").map(
     normalizeServiceIncident
   );
+  const activeIncidents = readArray(record, "activeIncidents", "ActiveIncidents").map(normalizeServiceIncident);
+  const recentIncidents = readArray(record, "recentIncidents", "RecentIncidents").map(normalizeServiceIncident);
 
   return {
     serviceId: 3,
@@ -329,6 +625,8 @@ function normalizeTeamsServiceHealth(value: unknown): TeamsServiceHealth {
     serviceDisplayName: readString(record, "serviceDisplayName", "ServiceDisplayName") ?? "Microsoft Teams",
     currentStatus: readString(record, "currentStatus", "CurrentStatus", "serviceCurrentStatus", "ServiceCurrentStatus") ?? "No data",
     unresolvedIncidents,
+    activeIncidents: activeIncidents.length > 0 ? activeIncidents : unresolvedIncidents.filter((incident) => incident.status.toLowerCase() === "active"),
+    recentIncidents: recentIncidents.length > 0 ? recentIncidents : unresolvedIncidents.slice(0, 10),
   };
 }
 
@@ -368,7 +666,7 @@ function normalizeDashboardData(value: unknown): DashboardData {
 }
 
 function getSignalTunerSessionToken(response: AuthResponse): string {
-  const token = response.token ?? response.sessionToken ?? response.jwt ?? response.jwtToken;
+  const token = response.token ?? response.Token ?? response.sessionToken ?? response.jwt ?? response.jwtToken;
 
   if (!token) {
     throw new Error(
@@ -377,19 +675,6 @@ function getSignalTunerSessionToken(response: AuthResponse): string {
   }
 
   return token;
-}
-
-function DataList({ items }: { items: Array<{ label: string; value: unknown }> }) {
-  return (
-    <dl className="dataList">
-      {items.map((item) => (
-        <React.Fragment key={item.label}>
-          <dt>{item.label}</dt>
-          <dd>{formatValue(item.value)}</dd>
-        </React.Fragment>
-      ))}
-    </dl>
-  );
 }
 
 function ConfigPage() {
@@ -422,98 +707,462 @@ function ConfigPage() {
   );
 }
 
-function SignInPanel({
+function Spinner() {
+  return <span className="spinner" aria-hidden="true" />;
+}
+
+function AuthErrorAlert({ message }: { message: string | null }) {
+  const alertRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (message) {
+      alertRef.current?.focus();
+    }
+  }, [message]);
+
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className="authAlert" role="alert" aria-live="assertive" tabIndex={-1} ref={alertRef}>
+      <strong>Authentication issue</strong>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function PasswordField({
   error,
-  isLoading,
+  helpText,
+  id,
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  error?: string;
+  helpText?: string;
+  id: string;
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  const [isVisible, setIsVisible] = React.useState(false);
+  const helpId = `${id}-help`;
+  const errorId = `${id}-error`;
+
+  return (
+    <div className="fieldGroup">
+      <label htmlFor={id}>{label}</label>
+      <div className="passwordInputWrap">
+        <input
+          aria-describedby={[helpText ? helpId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined}
+          aria-invalid={Boolean(error)}
+          autoComplete={id.includes("new") ? "new-password" : "current-password"}
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={isVisible ? "text" : "password"}
+          value={value}
+        />
+        <button
+          aria-label={isVisible ? "Hide password" : "Show password"}
+          className="iconButton"
+          onClick={() => setIsVisible((current) => !current)}
+          type="button"
+        >
+          {isVisible ? "Hide" : "Show"}
+        </button>
+      </div>
+      {helpText && (
+        <p className="fieldHelp" id={helpId}>
+          {helpText}
+        </p>
+      )}
+      {error && (
+        <p className="fieldError" id={errorId}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TeamsAuthButton({
+  disabled,
+  isBusy,
+  label,
+  onClick,
+}: {
+  disabled: boolean;
+  isBusy: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-busy={isBusy}
+      className="teamsButton"
+      disabled={disabled || isBusy}
+      onClick={onClick}
+      type="button"
+    >
+      {isBusy ? <Spinner /> : <span className="teamsGlyph" aria-hidden="true">T</span>}
+      <span>{isBusy ? "Signing you in with Microsoft Teams..." : label}</span>
+    </button>
+  );
+}
+
+function BrandPanel() {
+  const previewParticipants = [
+    { name: "Alicia Johnson", status: "Good", score: 98, className: "previewGood" },
+    { name: "Darrell Steward", status: "Fair", score: 76, className: "previewFair" },
+    { name: "Ralph Edwards", status: "Poor", score: 42, className: "previewPoor" },
+  ];
+
+  return (
+    <aside className="brandPanel">
+      <img className="brandLogo" src={signalTunerLogo} alt="SignalTuner" />
+      <div className="brandCopy">
+        <h1>Better calls.<br />Better meetings.</h1>
+        <p>
+          SignalTuner monitors Microsoft Teams meeting quality in real time and delivers clear recommendations to help
+          every meeting run at its best.
+        </p>
+      </div>
+      <div className="benefitList">
+        <article>
+          <strong>Real-time monitoring</strong>
+          <span>Continuously track connectivity, call quality, and device health.</span>
+        </article>
+        <article>
+          <strong>Actionable insights</strong>
+          <span>Identify the likely cause of an issue and get prioritized recommendations.</span>
+        </article>
+        <article>
+          <strong>Teams native</strong>
+          <span>Built to work directly within Microsoft Teams meetings.</span>
+        </article>
+      </div>
+      <div className="meetingPreview" aria-hidden="true">
+        <div className="previewHeader">
+          <span>Meeting health</span>
+          <strong>Good</strong>
+        </div>
+        <div className="previewScore">92 / 100</div>
+        <div className="previewRows">
+          {previewParticipants.map((participant) => (
+            <div className="previewRow" key={participant.name}>
+              <span>{participant.name}</span>
+              <strong className={participant.className}>{participant.status}</strong>
+              <span>{participant.score}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function AuthFooter() {
+  return (
+    <footer className="authFooter">
+      <span>&copy; {getCurrentYear()} SignalTuner</span>
+      <a href="https://signaltuner.com/privacy">Privacy Policy</a>
+      <a href="https://signaltuner.com/terms">Terms of Service</a>
+      <a href="https://signaltuner.com/support">Support</a>
+    </footer>
+  );
+}
+
+function AuthLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="pageShell authShell">
+      <div className="authLayout">
+        <BrandPanel />
+        <section className="authCard" aria-labelledby="auth-title">
+          <img className="compactAuthLogo" src={signalTunerLogo} alt="SignalTuner" />
+          {children}
+        </section>
+      </div>
+      <AuthFooter />
+    </main>
+  );
+}
+
+function LoginPage({
+  error,
+  busyState,
+  isRunningInTeams,
   meetingContext,
-  onEmailRequest,
-  onEmailVerify,
-  onOAuthStart,
+  onCreateAccount,
+  onEmailSignIn,
   onTeamsSignIn,
 }: {
   error: string | null;
-  isLoading: boolean;
+  busyState: AuthBusyState;
+  isRunningInTeams: boolean;
   meetingContext: TeamsMeetingContext | null;
-  onEmailRequest: (email: string) => Promise<void>;
-  onEmailVerify: (email: string, code: string) => Promise<void>;
-  onOAuthStart: (provider: "google" | "github") => void;
+  onCreateAccount: () => void;
+  onEmailSignIn: (email: string, password: string) => Promise<void>;
   onTeamsSignIn: () => Promise<void>;
 }) {
   const [email, setEmail] = React.useState("");
-  const [code, setCode] = React.useState("");
-  const [step, setStep] = React.useState<EmailCodeStep>("request");
+  const [password, setPassword] = React.useState("");
+  const [fieldErrors, setFieldErrors] = React.useState<{ email?: string; password?: string }>({});
+  const emailRef = React.useRef<HTMLInputElement | null>(null);
+  const passwordRef = React.useRef<HTMLInputElement | null>(null);
+  const isBusy = busyState !== "idle";
+  const teamsBusy = busyState === "teams-sso" || busyState === "auto-sso";
+
+  const submitEmail = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const nextErrors = {
+      email: isValidEmail(email) ? undefined : "Enter a valid email address.",
+      password: password ? undefined : "Enter your password.",
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.email) {
+      emailRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.password) {
+      passwordRef.current?.focus();
+      return;
+    }
+
+    await onEmailSignIn(email, password);
+  };
 
   return (
-    <main className="pageShell authShell">
-      <section className="authPanel">
-        <div>
-          <p className="eyebrow">SignalTuner Teams session</p>
-          <h1>Sign in to join this meeting health view.</h1>
-          <p className="mutedText">Sign in to join the SignalTuner session for this Teams meeting.</p>
-        </div>
-
-        <div className="consentNotice">
-          By joining this SignalTuner meeting session, your connectivity status and diagnostic information may be visible
-          to other authenticated SignalTuner users in this meeting.
-        </div>
-
-        <div className="authActions">
-          <button className="primaryButton" disabled={isLoading || !meetingContext} onClick={onTeamsSignIn} type="button">
-            Continue with Teams
-          </button>
-          <div className="secondaryGrid">
-            <button className="secondaryButton" disabled={isLoading} onClick={() => onOAuthStart("google")} type="button">
-              Continue with Google
-            </button>
-            <button className="secondaryButton" disabled={isLoading} onClick={() => onOAuthStart("github")} type="button">
-              Continue with GitHub
-            </button>
-          </div>
-        </div>
-
-        <form
-          className="emailCodeForm"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (step === "request") {
-              void onEmailRequest(email).then(() => setStep("verify"));
-              return;
-            }
-
-            void onEmailVerify(email, code);
-          }}
-        >
-          <label>
-            Email magic code
-            <input
-              autoComplete="email"
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              type="email"
-              value={email}
-            />
-          </label>
-          {step === "verify" && (
-            <label>
-              Code
-              <input
-                autoComplete="one-time-code"
-                onChange={(event) => setCode(event.target.value)}
-                placeholder="123456"
-                type="text"
-                value={code}
-              />
-            </label>
+    <AuthLayout>
+      <div className="authHeader">
+        <h1 id="auth-title">Welcome back</h1>
+        <p>Sign in to your SignalTuner account.</p>
+      </div>
+      <AuthErrorAlert message={error} />
+      {busyState === "auto-sso" && (
+        <p className="authStatus" role="status" aria-live="polite">
+          <Spinner /> Signing you in with Microsoft Teams...
+        </p>
+      )}
+      {!isRunningInTeams && (
+        <p className="authNotice">Teams SSO is available when this app is opened in Microsoft Teams.</p>
+      )}
+      {isRunningInTeams && !meetingContext && (
+        <p className="authNotice">Open SignalTuner from inside a Teams meeting to join a meeting session after sign-in.</p>
+      )}
+      <TeamsAuthButton
+        disabled={!isRunningInTeams || isBusy}
+        isBusy={teamsBusy}
+        label="Continue with Microsoft Teams"
+        onClick={() => void onTeamsSignIn()}
+      />
+      <div className="authSeparator">
+        <span>or</span>
+      </div>
+      <form className="authForm" aria-busy={busyState === "email-login"} onSubmit={(event) => void submitEmail(event)}>
+        <div className="fieldGroup">
+          <label htmlFor="login-email">Email</label>
+          <input
+            aria-describedby={fieldErrors.email ? "login-email-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.email)}
+            autoComplete="email"
+            id="login-email"
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@company.com"
+            ref={emailRef}
+            type="email"
+            value={email}
+          />
+          {fieldErrors.email && (
+            <p className="fieldError" id="login-email-error">
+              {fieldErrors.email}
+            </p>
           )}
-          <button className="secondaryButton" disabled={isLoading || !email} type="submit">
-            {step === "request" ? "Email me a code" : "Verify code"}
-          </button>
-        </form>
+        </div>
+        <PasswordField
+          error={fieldErrors.password}
+          id="login-password"
+          label="Password"
+          onChange={setPassword}
+          placeholder="Enter your password"
+          value={password}
+        />
+        <a className="forgotLink" href="https://signaltuner.com/reset-password">
+          Forgot password?
+        </a>
+        <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
+          {busyState === "email-login" ? <Spinner /> : null}
+          <span>Sign in</span>
+        </button>
+      </form>
+      <div className="authSwitch">
+        <span>New to SignalTuner?</span>
+        <button className="secondaryButton fullWidthButton" disabled={isBusy} onClick={onCreateAccount} type="button">
+          Create account
+        </button>
+      </div>
+    </AuthLayout>
+  );
+}
 
-        {error && <p className="inlineError">{error}</p>}
-        {!meetingContext && <p className="inlineNote">Open this tab inside a Teams meeting to join a meeting session.</p>}
-      </section>
-    </main>
+function CreateAccountPage({
+  busyState,
+  error,
+  isRunningInTeams,
+  onEmailRegister,
+  onSignIn,
+  onTeamsSignIn,
+}: {
+  busyState: AuthBusyState;
+  error: string | null;
+  isRunningInTeams: boolean;
+  onEmailRegister: (email: string, password: string) => Promise<void>;
+  onSignIn: () => void;
+  onTeamsSignIn: () => Promise<void>;
+}) {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [termsAccepted, setTermsAccepted] = React.useState(false);
+  const [fieldErrors, setFieldErrors] = React.useState<{
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+    terms?: string;
+  }>({});
+  const emailRef = React.useRef<HTMLInputElement | null>(null);
+  const termsRef = React.useRef<HTMLInputElement | null>(null);
+  const isBusy = busyState !== "idle";
+  const teamsBusy = busyState === "teams-sso" || busyState === "auto-sso";
+
+  const submitRegistration = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const nextErrors = {
+      email: isValidEmail(email) ? undefined : "Enter a valid email address.",
+      password: password.length >= 8 ? undefined : PASSWORD_REQUIREMENT_TEXT,
+      confirmPassword: password === confirmPassword ? undefined : "Passwords must match.",
+      terms: termsAccepted ? undefined : "Accept the terms to create an account.",
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.email) {
+      emailRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.terms) {
+      termsRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.password || nextErrors.confirmPassword) {
+      return;
+    }
+
+    await onEmailRegister(email, password);
+  };
+
+  return (
+    <AuthLayout>
+      <div className="authHeader">
+        <h1 id="auth-title">Create your account</h1>
+        <p>Start monitoring and improving your Microsoft Teams meetings.</p>
+      </div>
+      <AuthErrorAlert message={error} />
+      {!isRunningInTeams && (
+        <p className="authNotice">Teams account creation is available when this app is opened in Microsoft Teams.</p>
+      )}
+      <div className="teamsCreateBlock">
+        <TeamsAuthButton
+          disabled={!isRunningInTeams || isBusy}
+          isBusy={teamsBusy}
+          label="Create with Microsoft Teams"
+          onClick={() => void onTeamsSignIn()}
+        />
+        <p>Use the Microsoft account already signed in to Teams.</p>
+      </div>
+      <div className="authSeparator">
+        <span>or create with email</span>
+      </div>
+      <form className="authForm" aria-busy={busyState === "email-register"} onSubmit={(event) => void submitRegistration(event)}>
+        <div className="fieldGroup">
+          <label htmlFor="register-email">Email</label>
+          <input
+            aria-describedby={fieldErrors.email ? "register-email-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.email)}
+            autoComplete="email"
+            id="register-email"
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@company.com"
+            ref={emailRef}
+            type="email"
+            value={email}
+          />
+          {fieldErrors.email && (
+            <p className="fieldError" id="register-email-error">
+              {fieldErrors.email}
+            </p>
+          )}
+        </div>
+        <PasswordField
+          error={fieldErrors.password}
+          helpText={PASSWORD_REQUIREMENT_TEXT}
+          id="new-password"
+          label="Password"
+          onChange={setPassword}
+          placeholder="Enter your password"
+          value={password}
+        />
+        <PasswordField
+          error={fieldErrors.confirmPassword}
+          id="confirm-new-password"
+          label="Confirm password"
+          onChange={setConfirmPassword}
+          placeholder="Enter your password"
+          value={confirmPassword}
+        />
+        <label className="checkboxRow" htmlFor="terms">
+          <input
+            aria-describedby={fieldErrors.terms ? "terms-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.terms)}
+            checked={termsAccepted}
+            id="terms"
+            onChange={(event) => setTermsAccepted(event.target.checked)}
+            ref={termsRef}
+            type="checkbox"
+          />
+          <span>
+            I agree to the <a href="https://signaltuner.com/terms">Terms of Service</a> and{" "}
+            <a href="https://signaltuner.com/privacy">Privacy Policy</a>.
+          </span>
+        </label>
+        {fieldErrors.terms && (
+          <p className="fieldError" id="terms-error">
+            {fieldErrors.terms}
+          </p>
+        )}
+        <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
+          {busyState === "email-register" ? <Spinner /> : null}
+          <span>Create account</span>
+        </button>
+      </form>
+      <div className="authSwitch">
+        <span>Already have an account?</span>
+        <button className="secondaryButton fullWidthButton" disabled={isBusy} onClick={onSignIn} type="button">
+          Sign in
+        </button>
+      </div>
+    </AuthLayout>
   );
 }
 
@@ -571,99 +1220,205 @@ function ClientPrompt({
   );
 }
 
+function IncidentReportRow({
+  incident,
+  onSelect,
+  statusClassName,
+}: {
+  incident: ServiceIncident;
+  onSelect: () => void;
+  statusClassName: string;
+}) {
+  const reportDate = incident.startedAt ? new Date(incident.startedAt).toLocaleString() : "No date";
+
+  return (
+    <button className="compactIncident" onClick={onSelect} type="button">
+      <span className={`incidentIcon ${statusClassName}`} aria-hidden="true">!</span>
+      <strong>{incident.title}</strong>
+      <span className={`semanticBadge ${statusClassName}`}>{incident.status}</span>
+      <time>{reportDate}</time>
+    </button>
+  );
+}
+
+function IncidentDetailModal({
+  incident,
+  onClose,
+}: {
+  incident: ServiceIncident;
+  onClose: () => void;
+}) {
+  const incidentLink = incident.link || "https://status.cloud.microsoft/microsoft-365";
+
+  return (
+    <div
+      className="incidentModalOverlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section aria-labelledby="incident-detail-title" aria-modal="true" className="incidentModal" role="dialog">
+        <header className="incidentModalHeader">
+          <div>
+            <span className="eyebrow">Incident report</span>
+            <h2 id="incident-detail-title">{incident.title}</h2>
+          </div>
+          <button aria-label="Close incident details" className="modalCloseButton" onClick={onClose} type="button">
+            Close
+          </button>
+        </header>
+        <div className="incidentModalBody">
+          <div className="incidentModalField">
+            <span>Description</span>
+            <p>{incident.impact || "No incident description is available."}</p>
+          </div>
+          <div className="incidentModalField">
+            <span>Unique identifier</span>
+            <p>{incident.uniqueIdentifier || "Not available"}</p>
+          </div>
+          <a className="incidentReportLink" href={incidentLink} rel="noreferrer" target="_blank">
+            Microsoft Teams incident report
+          </a>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function Dashboard({
   analysis,
   dashboard,
   error,
   isLoading,
-  onAddCredits,
   onAnalyzeAll,
   onAnalyzeUser,
   onInvite,
-  onRefresh,
-  onSetPlan,
   onSignOut,
+  onThemePreferenceChange,
   subscriptionPrompt,
+  themePreference,
 }: {
   analysis: AnalysisResult | null;
   dashboard: DashboardData;
   error: string | null;
   isLoading: boolean;
-  onAddCredits: (amount: number) => Promise<void>;
   onAnalyzeAll: () => Promise<void>;
   onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
-  onRefresh: () => Promise<void>;
-  onSetPlan: (plan: string) => Promise<void>;
   onSignOut: () => void;
+  onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
   subscriptionPrompt: SubscriptionPrompt | null;
+  themePreference: SignalTunerThemePreference;
 }) {
   const [accountOpen, setAccountOpen] = React.useState(false);
+  const [recentIncidentsOpen, setRecentIncidentsOpen] = React.useState(false);
+  const [selectedIncident, setSelectedIncident] = React.useState<ServiceIncident | null>(null);
+  const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(
+    dashboard.participants[0]?.userId ?? null
+  );
   const user = dashboard.currentUser;
   const activeParticipants = dashboard.participants.filter((participant) => participant.clientDataStatus === "active");
+  const activeIncidents =
+    dashboard.teamsServiceHealth.activeIncidents.length > 0
+      ? dashboard.teamsServiceHealth.activeIncidents
+      : EXAMPLE_ACTIVE_INCIDENTS;
+  const recentIncidents = dashboard.teamsServiceHealth.recentIncidents;
+  const teamsStatus =
+    dashboard.teamsServiceHealth.activeIncidents.length > 0 ? normalizeTeamsServiceStatus(dashboard.teamsServiceHealth) : "activeIncident";
+  const teamsStatusMeta = getTeamsStatusMeta(teamsStatus);
+  const goodParticipants = dashboard.participants.filter((participant) => getSignalTone(participant.signalScore) === "good").length;
+  const aggregateScore =
+    activeParticipants.length > 0
+      ? Math.round(
+          activeParticipants.reduce((sum, participant) => sum + (participant.signalScore ?? 0), 0) / activeParticipants.length
+        )
+      : null;
+  const aggregateTone = getSignalTone(aggregateScore);
+  const aggregateLabel = aggregateTone === "good" ? "Good" : aggregateTone === "fair" ? "Fair" : aggregateTone === "poor" ? "Poor" : "No data";
+  const dashboardSummary =
+    teamsStatus === "operational"
+      ? "Microsoft Teams is operational. Participant telemetry is summarized from active SignalTuner clients."
+      : "Microsoft Teams is experiencing an active incident that may impact meeting quality.";
+  const participantSummary =
+    activeParticipants.length === dashboard.participants.length
+      ? "All participants with SignalTuner data are reporting into this meeting."
+      : `Participant connectivity is mixed. ${dashboard.participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
+
+  React.useEffect(() => {
+    if (!selectedIncident) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedIncident(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedIncident]);
 
   return (
-    <main className="pageShell">
-      <header className="topBar">
-        <div>
-          <p className="eyebrow">SignalTuner meeting session</p>
-          <h1>Microsoft Teams health dashboard</h1>
-        </div>
-        <div className="topActions">
-          <span className="creditBadge">{user.credits} credits</span>
-          <button className="secondaryButton" onClick={onRefresh} type="button">
-            Refresh
+    <main className="pageShell dashboardShell">
+      <header className="appHeader">
+        <img className="appLogo" src={signalTunerLogo} alt="SignalTuner" />
+        <div className="accountMenuWrap">
+          <button
+            aria-expanded={accountOpen}
+            aria-haspopup="menu"
+            className="accountButton"
+            onClick={() => setAccountOpen((current) => !current)}
+            type="button"
+          >
+            <span className="avatarBubble" aria-hidden="true">
+              {getInitials(user.displayName, user.email)}
+            </span>
+            <span>{user.displayName ?? user.email ?? "SignalTuner account"}</span>
+            <span className="chevron chevronDown" aria-hidden="true" />
           </button>
-          <button className="secondaryButton" onClick={() => setAccountOpen((current) => !current)} type="button">
-            Account
-          </button>
-        </div>
-      </header>
-
-      {accountOpen && (
-        <section className="panel accountPanel">
-          <div>
-            <h2>{user.displayName ?? user.email ?? "SignalTuner account"}</h2>
-            <DataList
-              items={[
-                { label: "Email", value: user.email },
-                { label: "Credits remaining", value: user.credits },
-                { label: "Subscription", value: user.subscriptionPlan ?? "Free" },
-                { label: "Client active", value: user.clientIsActive },
-              ]}
-            />
-          </div>
-          <div className="accountControls">
-            <p className="inlineNote">
-              Test/development controls. TODO: restrict or remove before production subscription checkout is enabled.
-            </p>
-            <div className="buttonRow">
-              {[1, 5, 10].map((amount) => (
-                <button className="secondaryButton" key={amount} onClick={() => void onAddCredits(amount)} type="button">
-                  Add Test +{amount}
-                </button>
-              ))}
-            </div>
-            <div className="buttonRow">
-              {["Free", "Pro Test", "Team Test"].map((plan) => (
-                <button className="secondaryButton" key={plan} onClick={() => void onSetPlan(plan)} type="button">
-                  {plan}
-                </button>
-              ))}
-            </div>
-            <div className="buttonRow">
-              {getDownloadUrl() && (
-                <a className="secondaryButton buttonLink" href={getDownloadUrl() ?? undefined}>
-                  Download client
-                </a>
-              )}
-              <button className="secondaryButton" onClick={onSignOut} type="button">
+          {accountOpen && (
+            <div className="accountDropdown" role="menu">
+              <div className="accountDropdownHeader">
+                <strong>{user.displayName ?? user.email ?? "SignalTuner account"}</strong>
+                <span>{user.email}</span>
+              </div>
+              <button role="menuitem" type="button" onClick={() => setAccountOpen(false)}>
+                Account
+              </button>
+              <button role="menuitem" type="button" onClick={() => setAccountOpen(false)}>
+                Settings
+              </button>
+              <div className="themePreferenceControl compactThemeControl">
+                <strong>Appearance</strong>
+                <div className="segmentedControl" role="group" aria-label="SignalTuner appearance">
+                  <button
+                    aria-pressed={themePreference === "light"}
+                    className={themePreference === "light" ? "activeSegment" : ""}
+                    onClick={() => onThemePreferenceChange("light")}
+                    type="button"
+                  >
+                    Light
+                  </button>
+                  <button
+                    aria-pressed={themePreference === "dark"}
+                    className={themePreference === "dark" ? "activeSegment" : ""}
+                    onClick={() => onThemePreferenceChange("dark")}
+                    type="button"
+                  >
+                    Dark
+                  </button>
+                </div>
+              </div>
+              <button role="menuitem" type="button" onClick={onSignOut}>
                 Sign out
               </button>
             </div>
-          </div>
-        </section>
-      )}
+          )}
+        </div>
+      </header>
 
       {error && <section className="panel panelAlert">{error}</section>}
 
@@ -677,72 +1432,84 @@ function Dashboard({
           <button className="primaryButton" onClick={() => setAccountOpen(true)} type="button">
             Manage subscription
           </button>
-          <p className="inlineNote">TODO: connect this action to production Stripe checkout.</p>
         </section>
       )}
 
-      <section className="dashboardGrid">
-        <article className="panel">
-          <h2>Microsoft Teams health</h2>
-          <span className={`statusBadge ${getSeverityClass(dashboard.teamsServiceHealth.currentStatus)}`}>
-            {dashboard.teamsServiceHealth.currentStatus}
-          </span>
-          <DataList
-            items={[
-              { label: "Service", value: dashboard.teamsServiceHealth.serviceDisplayName },
-              { label: "Service ID", value: dashboard.teamsServiceHealth.serviceId },
-              { label: "Unresolved incidents", value: dashboard.teamsServiceHealth.unresolvedIncidents.length },
-            ]}
-          />
-        </article>
-
-        <article className="panel">
-          <h2>Session</h2>
-          <DataList
-            items={[
-              { label: "Session ID", value: dashboard.meetingSessionId },
-              { label: "Participants", value: dashboard.participants.length },
-              { label: "With active data", value: activeParticipants.length },
-              { label: "Credits", value: user.credits },
-            ]}
-          />
-        </article>
-      </section>
-
-      <section className="panel">
-        <div className="sectionTitleRow">
-          <div>
-            <h2>Unresolved Microsoft Teams incidents</h2>
-            <p>Shown from the SignalTuner service health tables for service ID 3.</p>
+      <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
+        <div className="serviceStatusCard">
+          <div className="teamsMark" aria-hidden="true">T</div>
+          <div className="serviceStatusContent">
+            <div className="cardTitleRow">
+              <h2>Microsoft Teams</h2>
+              <span className={`semanticBadge ${teamsStatusMeta.className}`}>{teamsStatusMeta.label}</span>
+            </div>
+            <p>{teamsStatusMeta.description}</p>
+            <a className="sourceLink" href="https://status.cloud.microsoft/microsoft-365" target="_blank" rel="noreferrer">
+              View Microsoft 365 Service Health
+            </a>
           </div>
         </div>
-        {dashboard.teamsServiceHealth.unresolvedIncidents.length > 0 ? (
-          <div className="incidentList">
-            {dashboard.teamsServiceHealth.unresolvedIncidents.map((incident) => (
-              <article className="incidentItem" key={incident.incidentId}>
-                <strong>{incident.title}</strong>
-                <span>{incident.status}</span>
-                <p>{formatValue(incident.impact)}</p>
-              </article>
-            ))}
+
+        <div className="incidentsCard">
+          <div className="cardTitleRow">
+            <h2>Incident reports</h2>
           </div>
-        ) : (
-          <p className="inlineNote">No unresolved Microsoft Teams incidents are currently reported.</p>
-        )}
+          {activeIncidents.length > 0 ? (
+            <div className={`compactIncidentList activeIncidentList ${activeIncidents.length > 3 ? "scrollableIncidentList" : ""}`}>
+              {activeIncidents.map((incident) => (
+                <IncidentReportRow
+                  incident={incident}
+                  key={incident.incidentId}
+                  onSelect={() => setSelectedIncident(incident)}
+                  statusClassName={teamsStatusMeta.className}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="emptyState">No active Microsoft Teams incidents are currently reported.</p>
+          )}
+          <div className="semanticIncidentDropdown">
+            <button
+              aria-controls="recent-incident-menu"
+              aria-expanded={recentIncidentsOpen}
+              className="recentIncidentsToggle"
+              onClick={() => setRecentIncidentsOpen((current) => !current)}
+              type="button"
+            >
+              <span>Resolved incidents</span>
+              <span className={`chevron ${recentIncidentsOpen ? "chevronUp" : "chevronDown"}`} aria-hidden="true" />
+            </button>
+            {recentIncidentsOpen && (
+              <div className="compactIncidentList recentIncidentList semanticIncidentMenu" id="recent-incident-menu" role="menu">
+                {recentIncidents.length > 0 ? (
+                  recentIncidents.map((incident) => (
+                    <IncidentReportRow
+                      incident={incident}
+                      key={incident.incidentId}
+                      onSelect={() => setSelectedIncident(incident)}
+                      statusClassName={incident.status.toLowerCase() === "active" ? "statusIncident" : "statusOperational"}
+                    />
+                  ))
+                ) : (
+                  <p className="emptyState">No incident reports are available.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </section>
 
-      <section className="panel">
+      <section className="panel participantsPanel">
         <div className="sectionTitleRow">
           <div>
-            <h2>Authenticated participants</h2>
-            <p>Only SignalTuner users who opened this app and joined the current meeting session appear here.</p>
+            <h2>Meeting Participants</h2>
           </div>
           <div className="buttonRow inlineButtons">
             <button className="secondaryButton" disabled={isLoading} onClick={onInvite} type="button">
-              Invite Participants
+              Invite
             </button>
             <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={onAnalyzeAll} type="button">
-              Run Full Analysis
+              Run full analysis
             </button>
           </div>
         </div>
@@ -751,40 +1518,82 @@ function Dashboard({
           <table className="participantTable">
             <thead>
               <tr>
+                <th aria-label="Expand participant telemetry"></th>
                 <th>Participant</th>
-                <th>Status / Signal Score</th>
-                <th>Client Data</th>
+                <th>Signal Score</th>
+                <th>Device</th>
+                <th>Workspace</th>
+                <th>Network</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {dashboard.participants.map((participant) => {
                 const hasData = participant.clientDataStatus === "active";
+                const isExpanded = expandedParticipantId === participant.userId;
+                const telemetry = getParticipantTelemetry(analysis, participant.userId);
+                const issues = getParticipantIssues(analysis, participant.userId);
+                const tone = getSignalTone(participant.signalScore);
 
                 return (
-                  <tr key={participant.userId}>
-                    <td>
-                      <strong>{getParticipantName(participant)}</strong>
-                      <span>{participant.authProvider ?? "Signed in"}</span>
-                    </td>
-                    <td>{hasData ? participant.signalScore ?? "Active" : "No data"}</td>
-                    <td>
-                      <span className={`statusBadge ${hasData ? "severityGreen" : "severityBlue"}`}>
-                        {hasData ? "Active telemetry" : "No data"}
-                      </span>
-                    </td>
-                    <td>
-                      {hasData ? (
-                        <button className="secondaryButton" disabled={isLoading} onClick={() => onAnalyzeUser(participant.userId)} type="button">
-                          Analyze Connection
+                  <React.Fragment key={participant.userId}>
+                    <tr>
+                      <td className="expandCell">
+                        <button
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} telemetry for ${getParticipantName(participant)}`}
+                          className="expandButton"
+                          onClick={() => setExpandedParticipantId(isExpanded ? null : participant.userId)}
+                          type="button"
+                        >
+                          <span className={`chevron ${isExpanded ? "chevronUp" : "chevronRight"}`} aria-hidden="true" />
                         </button>
-                      ) : (
-                        <button className="secondaryButton" disabled={isLoading} onClick={onInvite} type="button">
-                          Prompt to Activate
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+                      <td>
+                        <div className="participantIdentity">
+                          <span className="avatarBubble smallAvatar" aria-hidden="true">
+                            {getInitials(participant.displayName, participant.email)}
+                          </span>
+                          <div>
+                            <strong>{getParticipantName(participant)}</strong>
+                            <span>{participant.userId === user.userId ? "You" : participant.authProvider ?? "Participant"}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <strong className={`scoreValue score-${tone}`}>
+                          {hasData && participant.signalScore !== null && !Number.isNaN(participant.signalScore) ? participant.signalScore : "-"}
+                        </strong>
+                      </td>
+                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Device telemetry available" : "No device telemetry"} /></td>
+                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Workspace telemetry available" : "No workspace telemetry"} /></td>
+                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Network telemetry available" : "No network telemetry"} /></td>
+                      <td>
+                        {hasData ? (
+                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => onAnalyzeUser(participant.userId)} type="button">
+                            Analyze
+                          </button>
+                        ) : (
+                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={onInvite} type="button">
+                            Prompt
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="telemetryDetailRow">
+                        <td colSpan={7}>
+                          <ParticipantTelemetryDetail
+                            hasData={hasData}
+                            issues={issues}
+                            onAnalyze={() => onAnalyzeUser(participant.userId)}
+                            participant={participant}
+                            telemetry={telemetry}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -792,79 +1601,90 @@ function Dashboard({
         </div>
       </section>
 
-      {analysis && <AnalysisPanel analysis={analysis} />}
+      <section className="panel meetingHealthPanel">
+        <div className={`healthDial health-${aggregateTone}`}>
+          <span className="dialIcon" aria-hidden="true">ST</span>
+          <strong>{aggregateLabel}</strong>
+        </div>
+        <div className="aggregateScore">
+          <span>Aggregate Signal Score</span>
+          <strong>{aggregateScore ?? "-"}</strong>
+          <span>/ 100</span>
+        </div>
+        <div className="meetingHealthCopy">
+          <p>{dashboardSummary}</p>
+          <p>{participantSummary}</p>
+          <div className="healthBadges">
+            <span className={`semanticBadge ${teamsStatusMeta.className}`}>Teams: {teamsStatusMeta.label}</span>
+            <span className="semanticBadge statusOperational">
+              {goodParticipants} of {dashboard.participants.length} Participants Good
+            </span>
+          </div>
+        </div>
+        <div className="healthActions">
+          <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={onAnalyzeAll} type="button">
+            Run full analysis
+          </button>
+          <p>Deep diagnostic analysis of all participants and network path.</p>
+        </div>
+      </section>
+      {selectedIncident ? (
+        <IncidentDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
+      ) : null}
     </main>
   );
 }
 
-function AnalysisPanel({ analysis }: { analysis: AnalysisResult }) {
-  if (analysis.mode === "user") {
-    return (
-      <section className="panel">
-        <h2>Connection analysis: {getParticipantName(analysis.data.targetUser)}</h2>
-        <p className="inlineNote">
-          Credits used: {analysis.data.creditsUsed}. Remaining: {analysis.data.remainingCredits}.
-        </p>
-        <IssueList issues={analysis.data.issues} />
-        <TelemetryTable telemetry={analysis.data.telemetry} />
-      </section>
-    );
-  }
+function ParticipantTelemetryDetail({
+  hasData,
+  issues,
+  onAnalyze,
+  participant,
+  telemetry,
+}: {
+  hasData: boolean;
+  issues: Issue[];
+  onAnalyze: () => Promise<void>;
+  participant: MeetingParticipant;
+  telemetry: TelemetryRecord | null;
+}) {
+  const recommendation = issues[0]?.recommendation ?? (hasData ? "Run analysis to populate participant telemetry." : "Prompt the participant to activate the local client.");
+  const overallStatus = issues[0]?.currentValue ?? (hasData ? "Pending" : "No data");
+  const tone = getSignalTone(participant.signalScore);
+  const telemetryItems = [
+    { label: "Wi-Fi Strength", value: getTelemetryValue(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength"]) },
+    { label: "Download Speed", value: getTelemetryValue(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed"]) },
+    { label: "Upload Speed", value: getTelemetryValue(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed"]) },
+    { label: "Latency / Ping", value: getTelemetryValue(telemetry, ["latency", "ping", "signal_latency", "latencyMs"]) },
+    { label: "Packet Loss", value: getTelemetryValue(telemetry, ["packetLoss", "signal_packet_loss", "packet_loss"]) },
+    { label: "Jitter", value: getTelemetryValue(telemetry, ["jitter", "signal_jitter", "jitterMs"]) },
+    { label: "CPU", value: getTelemetryValue(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent"]) },
+    { label: "Memory", value: getTelemetryValue(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent"]) },
+    { label: "VPN", value: getTelemetryValue(telemetry, ["vpn", "vpnStatus", "signal_vpn", "vpn_status"]) },
+    { label: "Overall Status", value: overallStatus },
+    { label: "Recommendation", value: recommendation },
+    { label: "Device / Platform", value: getTelemetryValue(telemetry, ["device", "platform", "devicePlatform", "signal_device_platform"]) },
+  ];
 
   return (
-    <section className="panel">
-      <h2>Full session analysis</h2>
-      <DataList
-        items={[
-          { label: "Credits used", value: analysis.data.creditsUsed },
-          { label: "Remaining credits", value: analysis.data.remainingCredits },
-          { label: "Active users analyzed", value: analysis.data.groupSummary.activeUsersAnalyzed },
-          { label: "Bandwidth issue users", value: analysis.data.groupSummary.usersWithBandwidthIssues },
-          { label: "System issue users", value: analysis.data.groupSummary.usersWithSystemIssues },
-          { label: "Network issue users", value: analysis.data.groupSummary.usersWithNetworkIssues },
-          { label: "Teams active incident", value: analysis.data.groupSummary.teamsHasActiveServiceIncident },
-        ]}
-      />
-      {analysis.data.analyzedUsers.map((result) => (
-        <article className="analysisUser" key={result.participant.userId}>
-          <h3>{getParticipantName(result.participant)}</h3>
-          <IssueList issues={result.issues} />
-          <TelemetryTable telemetry={result.telemetry} />
-        </article>
-      ))}
-    </section>
-  );
-}
-
-function IssueList({ issues }: { issues: Issue[] }) {
-  if (issues.length === 0) {
-    return <p className="inlineNote">No non-Excellent status fields were found.</p>;
-  }
-
-  return (
-    <div className="issueGrid">
-      {issues.map((issue) => (
-        <article className="issueCard" key={`${issue.affectedParticipant}-${issue.field}`}>
-          <span className={`statusBadge ${getSeverityClass(issue.severity)}`}>{issue.currentValue}</span>
-          <strong>{issue.field}</strong>
-          <p>{issue.recommendation}</p>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function TelemetryTable({ telemetry }: { telemetry: TelemetryRecord }) {
-  const entries = Object.entries(telemetry);
-
-  return (
-    <div className="telemetryGrid">
-      {entries.map(([key, value]) => (
-        <React.Fragment key={key}>
-          <span>{key}</span>
-          <strong>{formatValue(value)}</strong>
-        </React.Fragment>
-      ))}
+    <div className="telemetryDetail">
+      <div className="telemetryRail">
+        <span className={`signalGlyph signal-${tone}`} aria-hidden="true" />
+        <strong>Telemetry</strong>
+      </div>
+      <div className="telemetryMetrics">
+        {telemetryItems.map((item) => (
+          <div className="metricItem" key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+      {!telemetry && hasData && (
+        <button className="secondaryButton compactAction" onClick={() => void onAnalyze()} type="button">
+          Load telemetry
+        </button>
+      )}
     </div>
   );
 }
@@ -872,6 +1692,8 @@ function TelemetryTable({ telemetry }: { telemetry: TelemetryRecord }) {
 export default function App() {
   const isConfigPage = window.location.pathname.toLowerCase().startsWith("/tabs/config");
   const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_SIGNALTUNER_API_URL);
+  const [authPageMode, setAuthPageMode] = React.useState<AuthPageMode>(() => getAuthPageMode());
+  const [returnUrl, setReturnUrl] = React.useState(() => getReturnUrl());
   const [sessionToken, setSessionToken] = React.useState<string | null>(() =>
     window.localStorage.getItem(SIGNALTUNER_SESSION_TOKEN_KEY)
   );
@@ -881,9 +1703,14 @@ export default function App() {
   const [subscriptionPrompt, setSubscriptionPrompt] = React.useState<SubscriptionPrompt | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [busyState, setBusyState] = React.useState<AuthBusyState>("idle");
+  const [isRunningInTeams, setIsRunningInTeams] = React.useState(false);
+  const [teamsTheme, setTeamsTheme] = React.useState<TeamsTheme>("default");
+  const [themePreference, setThemePreference] = React.useState<SignalTunerThemePreference>(() => getStoredThemePreference());
   const [isClientPromptDismissed, setIsClientPromptDismissed] = React.useState(false);
   const [activationCodeError, setActivationCodeError] = React.useState<string | null>(null);
   const [accountUser, setAccountUser] = React.useState<CurrentUser | null>(null);
+  const isMountedRef = React.useRef(true);
 
   const parseCreditError = React.useCallback((caught: unknown): boolean => {
     const errorWithBody = caught as Error & { body?: string };
@@ -907,6 +1734,27 @@ export default function App() {
     }
 
     return false;
+  }, []);
+
+  React.useEffect(() => {
+    applyTeamsTheme(getEffectiveTheme(teamsTheme, themePreference));
+    window.localStorage.setItem(SIGNALTUNER_THEME_PREFERENCE_KEY, themePreference);
+  }, [teamsTheme, themePreference]);
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+
+    const updateRoute = () => {
+      setAuthPageMode(getAuthPageMode());
+      setReturnUrl(getReturnUrl());
+    };
+
+    window.addEventListener("popstate", updateRoute);
+
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener("popstate", updateRoute);
+    };
   }, []);
 
   const mergeActivationCode = React.useCallback((activationCode: string | null) => {
@@ -936,11 +1784,14 @@ export default function App() {
   }, []);
 
   const refreshAccountInfo = React.useCallback(
-    async (token: string) => {
-      const account = normalizeCurrentUser(
-        await fetchJson<unknown>(`${apiBaseUrl}/api/auth/me`, {
-          headers: buildAuthHeaders(token),
-        })
+    async (token: string, fallbackUser: CurrentUser | null = null) => {
+      const account = mergeCurrentUser(
+        normalizeCurrentUser(
+          await fetchJson<unknown>(`${apiBaseUrl}/api/auth/me`, {
+            headers: buildAuthHeaders(token),
+          })
+        ),
+        fallbackUser
       );
 
       setAccountUser(account);
@@ -1005,20 +1856,25 @@ export default function App() {
 
   const completeAuth = React.useCallback(
     async (response: AuthResponse) => {
-      if (!meetingContext) {
-        throw new Error("Teams meeting context is unavailable.");
-      }
-
       const signalTunerSessionToken = getSignalTunerSessionToken(response);
+      const responseUser = normalizeCurrentUser(response);
 
       window.localStorage.setItem(SIGNALTUNER_SESSION_TOKEN_KEY, signalTunerSessionToken);
+      window.localStorage.removeItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY);
       setSessionToken(signalTunerSessionToken);
       setIsClientPromptDismissed(false);
       setActivationCodeError(null);
-      const account = await refreshAccountInfo(signalTunerSessionToken);
-      await joinMeetingSession(signalTunerSessionToken, meetingContext, account);
+      const account = await refreshAccountInfo(signalTunerSessionToken, responseUser);
+
+      if (meetingContext) {
+        await joinMeetingSession(signalTunerSessionToken, meetingContext, account);
+        restoreReturnUrl(returnUrl);
+        return;
+      }
+
+      setError("You are signed in. Open SignalTuner from inside a Microsoft Teams meeting to join a meeting health view.");
     },
-    [joinMeetingSession, meetingContext, refreshAccountInfo]
+    [joinMeetingSession, meetingContext, refreshAccountInfo, returnUrl]
   );
 
   React.useEffect(() => {
@@ -1026,17 +1882,28 @@ export default function App() {
       return;
     }
 
-    const initializeTeams = async () => {
+    let isCancelled = false;
+    let disposeThemeSubscription: (() => void) | null = null;
+
+    const initializeTeamsContext = async () => {
       setIsLoading(true);
+      setBusyState("initializing-teams");
 
       try {
-        await teamsJs.app.initialize();
-        const context = await teamsJs.app.getContext();
+        const context = await initializeTeams();
+        if (isCancelled) {
+          return;
+        }
+
+        setIsRunningInTeams(true);
+        const nextTheme = mapTeamsTheme(context.app.theme);
+        setTeamsTheme(nextTheme);
+        disposeThemeSubscription = subscribeToTeamsThemeChanges(setTeamsTheme);
         const teamsMeetingId = context.meeting?.id;
 
         if (!teamsMeetingId) {
           setMeetingContext(null);
-          setError("Open SignalTuner from inside a Microsoft Teams meeting to join a meeting session.");
+          setError(null);
           return;
         }
 
@@ -1044,18 +1911,79 @@ export default function App() {
           teamsMeetingId,
           teamsConversationId: context.chat?.id ?? context.channel?.id ?? null,
           teamsTenantId: context.user?.tenant?.id ?? null,
-          meetingTitle: context.meeting?.details?.title ?? null,
+          meetingTitle: readString(asRecord(context.meeting), "title", "subject", "displayName"),
         });
         setError(null);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+      } catch {
+        if (isCancelled) {
+          return;
+        }
+
+        setIsRunningInTeams(false);
+        setMeetingContext(null);
+        setTeamsTheme("default");
+        setError(null);
       } finally {
-        setIsLoading(false);
+        if (!isCancelled) {
+          setIsLoading(false);
+          setBusyState("idle");
+        }
       }
     };
 
-    void initializeTeams();
+    void initializeTeamsContext();
+
+    return () => {
+      isCancelled = true;
+      disposeThemeSubscription?.();
+    };
   }, [isConfigPage]);
+
+  React.useEffect(() => {
+    if (
+      isConfigPage ||
+      !apiBaseUrl ||
+      !isRunningInTeams ||
+      !meetingContext ||
+      sessionToken ||
+      dashboard ||
+      window.localStorage.getItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY) === "true" ||
+      window.sessionStorage.getItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY) === "true"
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const attemptAutomaticTeamsSso = async () => {
+      setBusyState("auto-sso");
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await authenticateWithTeamsSso(apiBaseUrl, meetingContext);
+        if (!isCancelled && isMountedRef.current) {
+          await completeAuth(response);
+        }
+      } catch {
+        window.sessionStorage.setItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY, "true");
+        if (!isCancelled && isMountedRef.current) {
+          setError("Teams sign-in could not be completed. Try again or sign in with email.");
+        }
+      } finally {
+        if (!isCancelled && isMountedRef.current) {
+          setIsLoading(false);
+          setBusyState("idle");
+        }
+      }
+    };
+
+    void attemptAutomaticTeamsSso();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isRunningInTeams, meetingContext, sessionToken]);
 
   React.useEffect(() => {
     if (!sessionToken || !meetingContext || dashboard) {
@@ -1063,14 +1991,18 @@ export default function App() {
     }
 
     setIsLoading(true);
+    setBusyState("checking-session");
     refreshAccountInfo(sessionToken)
       .then((account) => joinMeetingSession(sessionToken, meetingContext, account))
       .catch((caught) => {
         window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
         setSessionToken(null);
-        setError(caught instanceof Error ? caught.message : String(caught));
+        setError(sanitizeAuthError(caught, "Your session expired. Sign in again to continue."));
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        setIsLoading(false);
+        setBusyState("idle");
+      });
   }, [dashboard, joinMeetingSession, meetingContext, refreshAccountInfo, sessionToken]);
 
   React.useEffect(() => {
@@ -1106,82 +2038,74 @@ export default function App() {
   }, [dashboard, refreshDashboard, sessionToken]);
 
   const signInWithTeams = React.useCallback(async () => {
-    if (!apiBaseUrl || !meetingContext) {
-      setError("SignalTuner API URL or Teams meeting context is unavailable.");
+    if (!apiBaseUrl) {
+      setError("SignalTuner is temporarily unavailable. Please try again.");
       return;
     }
 
     setIsLoading(true);
+    setBusyState("teams-sso");
     setError(null);
 
     try {
-      const teamsSsoToken = await teamsJs.authentication.getAuthToken();
-      const response = await fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/teams-sso`, {
-        method: "POST",
-        headers: buildAuthHeaders(null),
-        body: JSON.stringify({
-          teamsSsoToken,
-          teamsTenantId: meetingContext.teamsTenantId,
-          teamsMeetingId: meetingContext.teamsMeetingId,
-        }),
-      });
-
+      const response = await authenticateWithTeamsSso(apiBaseUrl, meetingContext);
       await completeAuth(response);
+      window.sessionStorage.removeItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(sanitizeAuthError(caught, "Teams sign-in could not be completed. Try again or sign in with email."));
     } finally {
       setIsLoading(false);
+      setBusyState("idle");
     }
   }, [apiBaseUrl, completeAuth, meetingContext]);
 
-  const requestEmailCode = React.useCallback(
-    async (email: string) => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        await fetchJson(`${apiBaseUrl}/api/auth/email-magic-code/request`, {
-          method: "POST",
-          headers: buildAuthHeaders(null),
-          body: JSON.stringify({ email }),
-        });
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-        throw caught;
-      } finally {
-        setIsLoading(false);
+  const emailSignIn = React.useCallback(
+    async (email: string, password: string) => {
+      if (!apiBaseUrl) {
+        setError("SignalTuner is temporarily unavailable. Please try again.");
+        return;
       }
-    },
-    [apiBaseUrl]
-  );
 
-  const verifyEmailCode = React.useCallback(
-    async (email: string, code: string) => {
       setIsLoading(true);
+      setBusyState("email-login");
       setError(null);
 
       try {
-        const response = await fetchJson<AuthResponse>(`${apiBaseUrl}/api/auth/email-magic-code/verify`, {
-          method: "POST",
-          headers: buildAuthHeaders(null),
-          body: JSON.stringify({ email, code }),
-        });
+        const response = await signInWithEmail(apiBaseUrl, email, password);
+        response.email = response.email ?? response.Email ?? email;
         await completeAuth(response);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+        setError(sanitizeAuthError(caught, "Your email or password was not recognized."));
       } finally {
         setIsLoading(false);
+        setBusyState("idle");
       }
     },
     [apiBaseUrl, completeAuth]
   );
 
-  const startOAuth = React.useCallback(
-    (provider: "google" | "github") => {
-      const returnUrl = encodeURIComponent(window.location.href);
-      window.location.assign(`${apiBaseUrl}/api/auth/${provider}/start?returnUrl=${returnUrl}`);
+  const emailRegister = React.useCallback(
+    async (email: string, password: string) => {
+      if (!apiBaseUrl) {
+        setError("SignalTuner is temporarily unavailable. Please try again.");
+        return;
+      }
+
+      setIsLoading(true);
+      setBusyState("email-register");
+      setError(null);
+
+      try {
+        const response = await createAccountWithEmail(apiBaseUrl, { email, password });
+        await completeAuth(response);
+      } catch (caught) {
+        setError(sanitizeAuthError(caught, "We could not create your account. Review the information and try again."));
+      } finally {
+        setIsLoading(false);
+        setBusyState("idle");
+      }
     },
-    [apiBaseUrl]
+    [apiBaseUrl, completeAuth]
   );
 
   const analyzeUser = React.useCallback(
@@ -1259,40 +2183,10 @@ export default function App() {
     }
   }, [apiBaseUrl, dashboard, sessionToken]);
 
-  const addCredits = React.useCallback(
-    async (amount: number) => {
-      if (!sessionToken || !dashboard) {
-        return;
-      }
-
-      await fetchJson(`${apiBaseUrl}/api/account/test-add-credits`, {
-        method: "POST",
-        headers: buildAuthHeaders(sessionToken),
-        body: JSON.stringify({ amount }),
-      });
-      await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-    },
-    [apiBaseUrl, dashboard, refreshDashboard, sessionToken]
-  );
-
-  const setPlan = React.useCallback(
-    async (plan: string) => {
-      if (!sessionToken || !dashboard) {
-        return;
-      }
-
-      await fetchJson(`${apiBaseUrl}/api/account/test-subscription-plan`, {
-        method: "POST",
-        headers: buildAuthHeaders(sessionToken),
-        body: JSON.stringify({ plan }),
-      });
-      await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-    },
-    [apiBaseUrl, dashboard, refreshDashboard, sessionToken]
-  );
-
   const signOut = React.useCallback(() => {
     window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
+    window.localStorage.setItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY, "true");
+    window.sessionStorage.setItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY, "true");
     setSessionToken(null);
     setDashboard(null);
     setAnalysis(null);
@@ -1307,14 +2201,27 @@ export default function App() {
   }
 
   if (!sessionToken || !dashboard) {
+    if (authPageMode === "create-account") {
+      return (
+        <CreateAccountPage
+          busyState={busyState}
+          error={error}
+          isRunningInTeams={isRunningInTeams}
+          onEmailRegister={emailRegister}
+          onSignIn={() => navigateAuth("login", returnUrl)}
+          onTeamsSignIn={signInWithTeams}
+        />
+      );
+    }
+
     return (
-      <SignInPanel
+      <LoginPage
+        busyState={busyState}
         error={error}
-        isLoading={isLoading}
+        isRunningInTeams={isRunningInTeams}
         meetingContext={meetingContext}
-        onEmailRequest={requestEmailCode}
-        onEmailVerify={verifyEmailCode}
-        onOAuthStart={startOAuth}
+        onCreateAccount={() => navigateAuth("create-account", returnUrl)}
+        onEmailSignIn={emailSignIn}
         onTeamsSignIn={signInWithTeams}
       />
     );
@@ -1355,16 +2262,13 @@ export default function App() {
           dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
-          onAddCredits={addCredits}
           onAnalyzeAll={analyzeAll}
           onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
-          onRefresh={async () => {
-            await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-          }}
-          onSetPlan={setPlan}
           onSignOut={signOut}
+          onThemePreferenceChange={setThemePreference}
           subscriptionPrompt={subscriptionPrompt}
+          themePreference={themePreference}
         />
       )}
     </>
