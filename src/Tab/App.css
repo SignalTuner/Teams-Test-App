@@ -1264,9 +1264,13 @@ a:focus-visible {
   gap: 2px;
 }
 
-.participantIdentity span {
+.participantIdentity div span {
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.participantIdentity .avatarBubble {
+  color: #FFFFFF;
 }
 
 .expandCell {

@@ -51,6 +51,11 @@ type TeamsMeetingContext = {
   teamsConversationId: string | null;
   teamsTenantId: string | null;
   meetingTitle: string | null;
+  organizerM365ObjectId: string | null;
+  organizerTenantId: string | null;
+  currentUserM365ObjectId: string | null;
+  currentUserTenantId: string | null;
+  currentUserMeetingRole: string | null;
 };
 
 type ServiceIncident = {
@@ -78,6 +83,7 @@ type MeetingParticipant = {
   displayName: string | null;
   email: string | null;
   authProvider: AuthProvider | string | null;
+  meetingRole?: string | null;
   joinedAt: string;
   lastSeenAt: string;
   signalScore: number | null;
@@ -281,12 +287,59 @@ function getEffectiveTheme(teamsTheme: TeamsTheme, preference: SignalTunerThemeP
   return preference === "dark" ? "dark" : "default";
 }
 
+function normalizeTeamsObjectId(value: string | null | undefined): string | null {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const guidMatch = trimmedValue.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return (guidMatch?.[0] ?? trimmedValue).toLowerCase();
+}
+
+function sameTeamsId(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = normalizeTeamsObjectId(left);
+  const normalizedRight = normalizeTeamsObjectId(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
 async function initializeTeams(): Promise<teamsJs.app.Context> {
   if (!teamsInitializationPromise) {
     teamsInitializationPromise = teamsJs.app.initialize().then(() => teamsJs.app.getContext());
   }
 
   return teamsInitializationPromise;
+}
+
+async function getTeamsMeetingDetails(): Promise<JsonRecord | null> {
+  await initializeTeams();
+
+  const meetingApi = teamsJs.meeting as typeof teamsJs.meeting & {
+    getMeetingDetailsVerbose?: () => Promise<unknown>;
+  };
+
+  if (typeof meetingApi.getMeetingDetailsVerbose === "function") {
+    try {
+      const meetingDetails = await meetingApi.getMeetingDetailsVerbose();
+      if (meetingDetails) {
+        return asRecord(meetingDetails);
+      }
+    } catch {
+      // Fall back to the callback API below for Teams clients without verbose details.
+    }
+  }
+
+  return new Promise((resolve) => {
+    teamsJs.meeting.getMeetingDetails((error, meetingDetails) => {
+      if (error || !meetingDetails) {
+        resolve(null);
+        return;
+      }
+
+      resolve(asRecord(meetingDetails));
+    });
+  });
 }
 
 async function getTeamsSsoToken(): Promise<string> {
@@ -364,6 +417,31 @@ function getDownloadUrl(): string | null {
 
 function getParticipantName(participant: MeetingParticipant): string {
   return participant.displayName ?? participant.email ?? `User ${participant.userId}`;
+}
+
+function formatParticipantMeetingRole(role: string | null | undefined): string {
+  const normalizedRole = role?.trim();
+
+  if (!normalizedRole) {
+    return "Participant";
+  }
+
+  const lowerRole = normalizedRole.toLowerCase();
+  const knownRoles: Record<string, string> = {
+    attendee: "Attendee",
+    organizer: "Organizer",
+    presenter: "Presenter",
+  };
+
+  if (knownRoles[lowerRole]) {
+    return knownRoles[lowerRole];
+  }
+
+  return normalizedRole
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function getInitials(name: string | null | undefined, email: string | null | undefined): string {
@@ -611,6 +689,10 @@ function normalizeServiceIncident(value: unknown): ServiceIncident {
   };
 }
 
+function isResolvedIncident(incident: ServiceIncident): boolean {
+  return incident.status.trim().toLowerCase() === "resolved";
+}
+
 function normalizeTeamsServiceHealth(value: unknown): TeamsServiceHealth {
   const record = asRecord(value);
   const unresolvedIncidents = readArray(record, "unresolvedIncidents", "UnresolvedIncidents", "incidents", "Incidents").map(
@@ -626,7 +708,7 @@ function normalizeTeamsServiceHealth(value: unknown): TeamsServiceHealth {
     currentStatus: readString(record, "currentStatus", "CurrentStatus", "serviceCurrentStatus", "ServiceCurrentStatus") ?? "No data",
     unresolvedIncidents,
     activeIncidents: activeIncidents.length > 0 ? activeIncidents : unresolvedIncidents.filter((incident) => incident.status.toLowerCase() === "active"),
-    recentIncidents: recentIncidents.length > 0 ? recentIncidents : unresolvedIncidents.slice(0, 10),
+    recentIncidents: recentIncidents.filter(isResolvedIncident).slice(0, 10),
   };
 }
 
@@ -641,6 +723,7 @@ function normalizeMeetingParticipant(value: unknown): MeetingParticipant {
     displayName: readString(record, "displayName", "DisplayName", "displayNameSnapshot", "DisplayNameSnapshot"),
     email: readString(record, "email", "Email", "userEmail", "UserEmail"),
     authProvider: readString(record, "authProvider", "AuthProvider"),
+    meetingRole: readString(record, "meetingRole", "MeetingRole", "participantRole", "ParticipantRole", "role", "Role"),
     joinedAt: readString(record, "joinedAt", "JoinedAt") ?? "",
     lastSeenAt: readString(record, "lastSeenAt", "LastSeenAt") ?? "",
     signalScore: readNumber(record, Number.NaN, "signalScore", "SignalScore"),
@@ -1230,10 +1313,11 @@ function IncidentReportRow({
   statusClassName: string;
 }) {
   const reportDate = incident.startedAt ? new Date(incident.startedAt).toLocaleString() : "No date";
+  const iconGlyph = statusClassName === "statusOperational" ? "✓" : "!";
 
   return (
     <button className="compactIncident" onClick={onSelect} type="button">
-      <span className={`incidentIcon ${statusClassName}`} aria-hidden="true">!</span>
+      <span className={`incidentIcon ${statusClassName}`} aria-hidden="true">{iconGlyph}</span>
       <strong>{incident.title}</strong>
       <span className={`semanticBadge ${statusClassName}`}>{incident.status}</span>
       <time>{reportDate}</time>
@@ -1324,7 +1408,7 @@ function Dashboard({
     dashboard.teamsServiceHealth.activeIncidents.length > 0
       ? dashboard.teamsServiceHealth.activeIncidents
       : EXAMPLE_ACTIVE_INCIDENTS;
-  const recentIncidents = dashboard.teamsServiceHealth.recentIncidents;
+  const resolvedIncidents = dashboard.teamsServiceHealth.recentIncidents.filter(isResolvedIncident);
   const teamsStatus =
     dashboard.teamsServiceHealth.activeIncidents.length > 0 ? normalizeTeamsServiceStatus(dashboard.teamsServiceHealth) : "activeIncident";
   const teamsStatusMeta = getTeamsStatusMeta(teamsStatus);
@@ -1481,8 +1565,8 @@ function Dashboard({
             </button>
             {recentIncidentsOpen && (
               <div className="compactIncidentList recentIncidentList semanticIncidentMenu" id="recent-incident-menu" role="menu">
-                {recentIncidents.length > 0 ? (
-                  recentIncidents.map((incident) => (
+                {resolvedIncidents.length > 0 ? (
+                  resolvedIncidents.map((incident) => (
                     <IncidentReportRow
                       incident={incident}
                       key={incident.incidentId}
@@ -1556,7 +1640,7 @@ function Dashboard({
                           </span>
                           <div>
                             <strong>{getParticipantName(participant)}</strong>
-                            <span>{participant.userId === user.userId ? "You" : participant.authProvider ?? "Participant"}</span>
+                            <span>{formatParticipantMeetingRole(participant.meetingRole)}</span>
                           </div>
                         </div>
                       </td>
@@ -1907,11 +1991,33 @@ export default function App() {
           return;
         }
 
+        const meetingDetails = await getTeamsMeetingDetails();
+        const organizer = asRecord(meetingDetails?.organizer);
+        const organizerM365ObjectId = normalizeTeamsObjectId(readString(organizer, "id"));
+        const organizerTenantId = readString(organizer, "tenantId");
+        const currentUserM365ObjectId = normalizeTeamsObjectId(context.user?.id);
+        const currentUserTenantId = context.user?.tenant?.id ?? null;
+        const currentUserMeetingRole = sameTeamsId(currentUserM365ObjectId, organizerM365ObjectId) ? "Organizer" : null;
+
+        if (import.meta.env.DEV) {
+          console.info("SignalTuner meeting role context", {
+            hasMeetingDetails: Boolean(meetingDetails),
+            hasCurrentUserId: Boolean(currentUserM365ObjectId),
+            hasOrganizerId: Boolean(organizerM365ObjectId),
+            currentUserIsOrganizer: currentUserMeetingRole === "Organizer",
+          });
+        }
+
         setMeetingContext({
           teamsMeetingId,
           teamsConversationId: context.chat?.id ?? context.channel?.id ?? null,
           teamsTenantId: context.user?.tenant?.id ?? null,
-          meetingTitle: readString(asRecord(context.meeting), "title", "subject", "displayName"),
+          meetingTitle: readString(asRecord(context.meeting), "title", "subject", "displayName") ?? readString(asRecord(meetingDetails?.details), "title"),
+          organizerM365ObjectId,
+          organizerTenantId,
+          currentUserM365ObjectId,
+          currentUserTenantId,
+          currentUserMeetingRole,
         });
         setError(null);
       } catch {
