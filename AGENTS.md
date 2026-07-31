@@ -134,6 +134,23 @@ signaltuner-back\database\
 
 All projects must treat `schema.sql` as the documented state of the **confirmed live database**, not as a scratch design file.
 
+### Current confirmed database notes
+
+As of 2026-07-31, the user confirmed execution of the July 25 Teams meeting
+migrations. The confirmed live schema includes:
+
+- `TeamsMeetingRosterParticipants` for Teams meeting roster cache entries,
+  keyed by `meeting_id` and `participant_cache_key`.
+- `TeamsMeetingSessions.organizer_m365_object_id` and
+  `TeamsMeetingSessions.organizer_tenant_id`, indexed by
+  `ix_teams_meeting_sessions_organizer`.
+- `TeamsMeetingParticipants.meeting_role` for the signed-in participant's
+  resolved Teams meeting role.
+
+These fields are additive contracts shared by the SignalTuner backend and
+SignalTuner Microsoft Teams app. Keep future meeting roster, organizer, and role
+changes aligned across both projects.
+
 ### Required database-change workflow
 
 When a database change is requested:

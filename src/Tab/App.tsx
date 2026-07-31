@@ -2,7 +2,23 @@ import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
 
 import "./App.css";
+import deviceCoresIcon from "./assets/device-cores-icon.svg";
+import deviceCpuIcon from "./assets/device-cpu-icon.svg";
+import deviceDivIcon from "./assets/device-div-icon.svg";
+import deviceMemoryIcon from "./assets/device-memory-icon.svg";
+import deviceProcessorIcon from "./assets/device-processor-icon.svg";
+import networkDownloadIcon from "./assets/network-download-icon.svg";
+import networkDivIcon from "./assets/network-div-icon.svg";
+import networkLatencyIcon from "./assets/network-latency-icon.svg";
+import networkPacketLossIcon from "./assets/network-packet-loss-icon.svg";
+import networkUploadIcon from "./assets/network-upload-icon.svg";
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
+import microsoftTeamsLogo from "./assets/microsoft-teams.png";
+import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
+import workspaceDivIcon from "./assets/workspace-div-icon.svg";
+import workspaceNetworkFrequencyIcon from "./assets/workspace-network-frequency-icon.svg";
+import workspaceVpnIcon from "./assets/workspace-vpn-icon.svg";
+import workspaceWifiStrengthIcon from "./assets/workspace-wifi-strength-icon.svg";
 
 type AuthProvider = "teams_sso" | "google" | "github" | "email_magic_code";
 type ClientDataStatus = "active" | "inactive" | "no_data";
@@ -87,6 +103,10 @@ type MeetingParticipant = {
   joinedAt: string;
   lastSeenAt: string;
   signalScore: number | null;
+  deviceStatus: AnalysisStatus | null;
+  workspaceStatus: AnalysisStatus | null;
+  networkStatus: AnalysisStatus | null;
+  liveTelemetry: TelemetryRecord | null;
   clientDataStatus: ClientDataStatus;
   clientIsActive: boolean;
 };
@@ -473,6 +493,44 @@ function getSignalTone(score: number | null | undefined): "good" | "fair" | "poo
   return "poor";
 }
 
+function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): "Excellent" | "Fair" | "Poor" | "Critical" | "Unknown" {
+  const normalizedStatus = status?.trim().toLowerCase();
+
+  if (normalizedStatus === "excellent") {
+    return "Excellent";
+  }
+
+  if (normalizedStatus === "fair") {
+    return "Fair";
+  }
+
+  if (normalizedStatus === "poor") {
+    return "Poor";
+  }
+
+  if (normalizedStatus === "critical") {
+    return "Critical";
+  }
+
+  if (score === null || score === undefined || Number.isNaN(score)) {
+    return "Unknown";
+  }
+
+  if (score >= 90) {
+    return "Excellent";
+  }
+
+  if (score >= 75) {
+    return "Fair";
+  }
+
+  if (score >= 55) {
+    return "Poor";
+  }
+
+  return "Critical";
+}
+
 function normalizeTeamsServiceStatus(health: TeamsServiceHealth): TeamsServiceStatus {
   const status = String(health.currentStatus ?? "").toLowerCase();
   const hasActiveIncidents = health.activeIncidents.length > 0 || health.unresolvedIncidents.length > 0;
@@ -528,6 +586,241 @@ function getTelemetryValue(telemetry: TelemetryRecord | null, keys: string[], fa
   return fallback;
 }
 
+function getTelemetryRawValue(telemetry: TelemetryRecord | null, keys: string[]): string | number | boolean | null {
+  if (!telemetry) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = telemetry[key];
+
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getTelemetryNumber(telemetry: TelemetryRecord | null, keys: string[]): number | null {
+  const value = getTelemetryRawValue(telemetry, keys);
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value.replace(/,/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function formatTelemetryMeasurement(telemetry: TelemetryRecord | null, keys: string[], unit = ""): string {
+  const value = getTelemetryRawValue(telemetry, keys);
+
+  if (value === null) {
+    return "No data";
+  }
+
+  if (typeof value === "number") {
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}${unit}`;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  const text = value.trim();
+  const isNumericText = text !== "" && Number.isFinite(Number.parseFloat(text.replace(/,/g, "")));
+  return isNumericText && unit && !text.toLowerCase().includes(unit.trim().toLowerCase()) ? `${text}${unit}` : text;
+}
+
+function truncateTelemetryValue(value: string, maxLength = 12): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+}
+
+function getTelemetryValueTitle(value: string): string | undefined {
+  return value.length > 12 ? value : undefined;
+}
+
+const signalMetricColors = {
+  unknown: "#6b96c1",
+  excellent: "#3BB537",
+  fair: "#F9AE00",
+  poor: "#FC6F20",
+  critical: "#EC2F3E",
+} as const;
+
+function getCpuMetricColor(value: number | null): string {
+  if (value === null || value === 0) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value >= 95) {
+    return signalMetricColors.critical;
+  }
+
+  if (value >= 85) {
+    return signalMetricColors.poor;
+  }
+
+  if (value >= 70) {
+    return signalMetricColors.fair;
+  }
+
+  return signalMetricColors.excellent;
+}
+
+function getMemoryMetricColor(value: number | null): string {
+  if (value === null || value === 0) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value >= 98) {
+    return signalMetricColors.critical;
+  }
+
+  if (value >= 96) {
+    return signalMetricColors.poor;
+  }
+
+  if (value >= 93) {
+    return signalMetricColors.fair;
+  }
+
+  return signalMetricColors.excellent;
+}
+
+function getWifiStrengthMetricColor(value: number | null): string {
+  if (value === null || value === 0) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value >= 90) {
+    return signalMetricColors.excellent;
+  }
+
+  if (value >= 80) {
+    return signalMetricColors.fair;
+  }
+
+  if (value >= 70) {
+    return signalMetricColors.poor;
+  }
+
+  return signalMetricColors.critical;
+}
+
+function getWifiBandMetricColor(value: string, wifiStrength: number | null): string {
+  if (value === "5 GHz") {
+    return wifiStrength !== null && wifiStrength >= 90 ? signalMetricColors.excellent : signalMetricColors.fair;
+  }
+
+  if (value === "2.4 GHz") {
+    return signalMetricColors.excellent;
+  }
+
+  return signalMetricColors.unknown;
+}
+
+function getVpnMetricColor(value: string): string {
+  if (value === "Not Connected") {
+    return signalMetricColors.excellent;
+  }
+
+  if (value === "Connected") {
+    return signalMetricColors.fair;
+  }
+
+  return signalMetricColors.unknown;
+}
+
+function getDownloadMetricColor(value: number | null): string {
+  if (value === null || value === 0) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value >= 3) {
+    return signalMetricColors.excellent;
+  }
+
+  if (value >= 1.8) {
+    return signalMetricColors.fair;
+  }
+
+  if (value >= 0.8) {
+    return signalMetricColors.poor;
+  }
+
+  return signalMetricColors.critical;
+}
+
+function getUploadMetricColor(value: number | null): string {
+  if (value === null || value === 0) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value >= 3.8) {
+    return signalMetricColors.excellent;
+  }
+
+  if (value >= 2.6) {
+    return signalMetricColors.fair;
+  }
+
+  if (value >= 1.2) {
+    return signalMetricColors.poor;
+  }
+
+  return signalMetricColors.critical;
+}
+
+function getLatencyMetricColor(value: number | null): string {
+  if (value === null) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value <= 20) {
+    return signalMetricColors.excellent;
+  }
+
+  if (value <= 50) {
+    return signalMetricColors.fair;
+  }
+
+  if (value <= 99) {
+    return signalMetricColors.poor;
+  }
+
+  return signalMetricColors.critical;
+}
+
+function getPacketLossMetricColor(value: number | null): string {
+  if (value === null) {
+    return signalMetricColors.unknown;
+  }
+
+  if (value <= 1.9) {
+    return signalMetricColors.excellent;
+  }
+
+  if (value <= 3.9) {
+    return signalMetricColors.fair;
+  }
+
+  if (value <= 5.9) {
+    return signalMetricColors.poor;
+  }
+
+  if (value > 6) {
+    return signalMetricColors.critical;
+  }
+
+  return signalMetricColors.unknown;
+}
+
 function getParticipantTelemetry(analysis: AnalysisResult | null, participantId: number): TelemetryRecord | null {
   if (!analysis) {
     return null;
@@ -538,6 +831,10 @@ function getParticipantTelemetry(analysis: AnalysisResult | null, participantId:
   }
 
   return analysis.data.analyzedUsers.find((result) => result.participant.userId === participantId)?.telemetry ?? null;
+}
+
+function getParticipantLiveTelemetry(participant: MeetingParticipant): TelemetryRecord | null {
+  return participant.clientIsActive ? participant.liveTelemetry : null;
 }
 
 function getParticipantIssues(analysis: AnalysisResult | null, participantId: number): Issue[] {
@@ -689,6 +986,22 @@ function normalizeServiceIncident(value: unknown): ServiceIncident {
   };
 }
 
+function asTelemetryRecord(value: unknown): TelemetryRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const telemetry: TelemetryRecord = {};
+
+  for (const [key, rawValue] of Object.entries(value)) {
+    if (typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean" || rawValue === null) {
+      telemetry[key] = rawValue;
+    }
+  }
+
+  return Object.keys(telemetry).length > 0 ? telemetry : null;
+}
+
 function isResolvedIncident(incident: ServiceIncident): boolean {
   return incident.status.trim().toLowerCase() === "resolved";
 }
@@ -727,6 +1040,10 @@ function normalizeMeetingParticipant(value: unknown): MeetingParticipant {
     joinedAt: readString(record, "joinedAt", "JoinedAt") ?? "",
     lastSeenAt: readString(record, "lastSeenAt", "LastSeenAt") ?? "",
     signalScore: readNumber(record, Number.NaN, "signalScore", "SignalScore"),
+    deviceStatus: readString(record, "deviceStatus", "DeviceStatus", "signalSystemStatus", "SignalSystemStatus"),
+    workspaceStatus: readString(record, "workspaceStatus", "WorkspaceStatus", "signalWifiStatus", "SignalWifiStatus"),
+    networkStatus: readString(record, "networkStatus", "NetworkStatus", "signalBandwidthStatus", "SignalBandwidthStatus"),
+    liveTelemetry: asTelemetryRecord(record.liveTelemetry ?? record.LiveTelemetry ?? record.telemetry ?? record.Telemetry),
     clientDataStatus: clientDataStatus as ClientDataStatus,
     clientIsActive: readBoolean(record, clientDataStatus === "active", "clientIsActive", "ClientIsActive"),
   };
@@ -892,7 +1209,7 @@ function TeamsAuthButton({
       onClick={onClick}
       type="button"
     >
-      {isBusy ? <Spinner /> : <span className="teamsGlyph" aria-hidden="true">T</span>}
+      {isBusy ? <Spinner /> : <img className="teamsGlyph" src={microsoftTeamsLogo} alt="" aria-hidden="true" />}
       <span>{isBusy ? "Signing you in with Microsoft Teams..." : label}</span>
     </button>
   );
@@ -1521,7 +1838,7 @@ function Dashboard({
 
       <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
         <div className="serviceStatusCard">
-          <div className="teamsMark" aria-hidden="true">T</div>
+          <img className="teamsMark" src={microsoftTeamsLogo} alt="Microsoft Teams" />
           <div className="serviceStatusContent">
             <div className="cardTitleRow">
               <h2>Microsoft Teams</h2>
@@ -1600,14 +1917,38 @@ function Dashboard({
 
         <div className="tableWrap">
           <table className="participantTable">
+            <colgroup>
+              <col className="expandColumn" />
+              <col className="participantColumn" />
+              <col className="scoreColumn" />
+              <col className="signalColumn" />
+              <col className="signalColumn" />
+              <col className="signalColumn" />
+              <col className="actionsColumn" />
+            </colgroup>
             <thead>
               <tr>
                 <th aria-label="Expand participant telemetry"></th>
                 <th>Participant</th>
                 <th>Signal Score</th>
-                <th>Device</th>
-                <th>Workspace</th>
-                <th>Network</th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={deviceDivIcon} alt="" aria-hidden="true" />
+                    <span>Device</span>
+                  </span>
+                </th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={workspaceDivIcon} alt="" aria-hidden="true" />
+                    <span>Workspace</span>
+                  </span>
+                </th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={networkDivIcon} alt="" aria-hidden="true" />
+                    <span>Network</span>
+                  </span>
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1615,7 +1956,7 @@ function Dashboard({
               {dashboard.participants.map((participant) => {
                 const hasData = participant.clientDataStatus === "active";
                 const isExpanded = expandedParticipantId === participant.userId;
-                const telemetry = getParticipantTelemetry(analysis, participant.userId);
+                const telemetry = getParticipantLiveTelemetry(participant) ?? getParticipantTelemetry(analysis, participant.userId);
                 const issues = getParticipantIssues(analysis, participant.userId);
                 const tone = getSignalTone(participant.signalScore);
 
@@ -1639,7 +1980,9 @@ function Dashboard({
                             {getInitials(participant.displayName, participant.email)}
                           </span>
                           <div>
-                            <strong>{getParticipantName(participant)}</strong>
+                            <strong className="participantName" title={participant.email ?? getParticipantName(participant)}>
+                              {getParticipantName(participant)}
+                            </strong>
                             <span>{formatParticipantMeetingRole(participant.meetingRole)}</span>
                           </div>
                         </div>
@@ -1649,9 +1992,21 @@ function Dashboard({
                           {hasData && participant.signalScore !== null && !Number.isNaN(participant.signalScore) ? participant.signalScore : "-"}
                         </strong>
                       </td>
-                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Device telemetry available" : "No device telemetry"} /></td>
-                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Workspace telemetry available" : "No workspace telemetry"} /></td>
-                      <td><span className={`signalGlyph signal-${hasData ? tone : "none"}`} aria-label={hasData ? "Network telemetry available" : "No network telemetry"} /></td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
                       <td>
                         {hasData ? (
                           <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => onAnalyzeUser(participant.userId)} type="button">
@@ -1666,15 +2021,12 @@ function Dashboard({
                     </tr>
                     {isExpanded && (
                       <tr className="telemetryDetailRow">
-                        <td colSpan={7}>
-                          <ParticipantTelemetryDetail
-                            hasData={hasData}
-                            issues={issues}
-                            onAnalyze={() => onAnalyzeUser(participant.userId)}
-                            participant={participant}
-                            telemetry={telemetry}
-                          />
-                        </td>
+                        <ParticipantTelemetryDetail
+                          hasData={hasData}
+                          issues={issues}
+                          onAnalyze={() => onAnalyzeUser(participant.userId)}
+                          telemetry={telemetry}
+                        />
                       </tr>
                     )}
                   </React.Fragment>
@@ -1723,53 +2075,86 @@ function ParticipantTelemetryDetail({
   hasData,
   issues,
   onAnalyze,
-  participant,
   telemetry,
 }: {
   hasData: boolean;
   issues: Issue[];
   onAnalyze: () => Promise<void>;
-  participant: MeetingParticipant;
   telemetry: TelemetryRecord | null;
 }) {
   const recommendation = issues[0]?.recommendation ?? (hasData ? "Run analysis to populate participant telemetry." : "Prompt the participant to activate the local client.");
-  const overallStatus = issues[0]?.currentValue ?? (hasData ? "Pending" : "No data");
-  const tone = getSignalTone(participant.signalScore);
-  const telemetryItems = [
-    { label: "Wi-Fi Strength", value: getTelemetryValue(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength"]) },
-    { label: "Download Speed", value: getTelemetryValue(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed"]) },
-    { label: "Upload Speed", value: getTelemetryValue(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed"]) },
-    { label: "Latency / Ping", value: getTelemetryValue(telemetry, ["latency", "ping", "signal_latency", "latencyMs"]) },
-    { label: "Packet Loss", value: getTelemetryValue(telemetry, ["packetLoss", "signal_packet_loss", "packet_loss"]) },
-    { label: "Jitter", value: getTelemetryValue(telemetry, ["jitter", "signal_jitter", "jitterMs"]) },
-    { label: "CPU", value: getTelemetryValue(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent"]) },
-    { label: "Memory", value: getTelemetryValue(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent"]) },
-    { label: "VPN", value: getTelemetryValue(telemetry, ["vpn", "vpnStatus", "signal_vpn", "vpn_status"]) },
-    { label: "Overall Status", value: overallStatus },
-    { label: "Recommendation", value: recommendation },
-    { label: "Device / Platform", value: getTelemetryValue(telemetry, ["device", "platform", "devicePlatform", "signal_device_platform"]) },
+  const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
+  const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
+  const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
+  const download = getTelemetryNumber(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed", "SignalDownloadSpeed"]);
+  const upload = getTelemetryNumber(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed", "SignalUploadSpeed"]);
+  const latency = getTelemetryNumber(telemetry, ["latency", "ping", "signal_latency", "latencyMs", "SignalPing"]);
+  const packetLoss = getTelemetryNumber(telemetry, ["packetLoss", "signal_packet_loss", "packet_loss", "SignalPacketLoss"]);
+  const currentNetwork = getTelemetryValue(telemetry, ["currentNetwork", "signal_current_network", "current_network", "SignalCurrentNetwork"]);
+  const frequency = getTelemetryValue(telemetry, ["wifiBand", "signal_wifi_band", "wifi_band", "frequency", "networkFrequency", "SignalWifiBand"]);
+  const vpn = getTelemetryValue(telemetry, ["vpn", "vpnStatus", "vpnDetected", "signal_vpn", "vpn_status", "signal_vpn_detected", "SignalVpnDetected"]);
+  const processor = getTelemetryValue(telemetry, ["processor", "signal_processor", "cpuProcessor", "deviceProcessor", "SignalProcessor"]);
+  const cores = getTelemetryValue(telemetry, ["cores", "signal_cores", "cpuCores", "deviceCores", "SignalCores"]);
+  const telemetryGroups = [
+    {
+      title: "Device",
+      metrics: [
+        { label: "CPU", icon: deviceCpuIcon, value: formatTelemetryMeasurement(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"], "%"), color: getCpuMetricColor(cpu) },
+        { label: "Memory", icon: deviceMemoryIcon, value: formatTelemetryMeasurement(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"], "%"), color: getMemoryMetricColor(memory) },
+        { label: "Processor", icon: deviceProcessorIcon, value: processor, color: processor === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
+        { label: "Cores", icon: deviceCoresIcon, value: cores, color: cores === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
+      ],
+    },
+    {
+      title: "Workspace",
+      metrics: [
+        { label: "Wi-Fi Strength", icon: workspaceWifiStrengthIcon, value: formatTelemetryMeasurement(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"], "%"), color: getWifiStrengthMetricColor(wifiStrength) },
+        { label: "Current Network", icon: workspaceCurrentNetworkIcon, value: currentNetwork, color: currentNetwork === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
+        { label: "Frequency", icon: workspaceNetworkFrequencyIcon, value: frequency, color: getWifiBandMetricColor(frequency, wifiStrength) },
+        { label: "VPN", icon: workspaceVpnIcon, value: vpn, color: getVpnMetricColor(vpn) },
+      ],
+    },
+    {
+      title: "Network",
+      metrics: [
+        { label: "Download", icon: networkDownloadIcon, value: formatTelemetryMeasurement(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed", "SignalDownloadSpeed"], " Mbps"), color: getDownloadMetricColor(download) },
+        { label: "Upload", icon: networkUploadIcon, value: formatTelemetryMeasurement(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed", "SignalUploadSpeed"], " Mbps"), color: getUploadMetricColor(upload) },
+        { label: "Latency", icon: networkLatencyIcon, value: formatTelemetryMeasurement(telemetry, ["latency", "ping", "signal_latency", "latencyMs", "SignalPing"], " ms"), color: getLatencyMetricColor(latency) },
+        { label: "Packet loss", icon: networkPacketLossIcon, value: formatTelemetryMeasurement(telemetry, ["packetLoss", "signal_packet_loss", "packet_loss", "SignalPacketLoss"], "%"), color: getPacketLossMetricColor(packetLoss) },
+      ],
+    },
   ];
 
   return (
-    <div className="telemetryDetail">
-      <div className="telemetryRail">
-        <span className={`signalGlyph signal-${tone}`} aria-hidden="true" />
-        <strong>Telemetry</strong>
-      </div>
-      <div className="telemetryMetrics">
-        {telemetryItems.map((item) => (
-          <div className="metricItem" key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
+    <>
+      <td className="telemetryDetailLead" colSpan={3}>
+        <p>{recommendation}</p>
+      </td>
+      {telemetryGroups.map((group) => (
+        <td className="telemetryDetailCell" key={group.title}>
+          <div className="telemetryGroupMetrics" aria-label={`${group.title} telemetry`}>
+            {group.metrics.map((item) => (
+              <div className="metricItem" key={item.label}>
+                <span className="metricLabel">
+                  <img src={item.icon} alt="" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </span>
+                <strong style={{ color: item.color }} title={getTelemetryValueTitle(item.value)}>
+                  {truncateTelemetryValue(item.value)}
+                </strong>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {!telemetry && hasData && (
-        <button className="secondaryButton compactAction" onClick={() => void onAnalyze()} type="button">
-          Load telemetry
-        </button>
-      )}
-    </div>
+        </td>
+      ))}
+      <td className="telemetryDetailActionCell">
+        {!telemetry && hasData ? (
+          <button className="secondaryButton compactAction" onClick={() => void onAnalyze()} type="button">
+            Load telemetry
+          </button>
+        ) : null}
+      </td>
+    </>
   );
 }
 

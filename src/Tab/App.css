@@ -348,15 +348,14 @@ a {
 }
 
 .teamsGlyph {
-  display: inline-grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
+  width: 14px;
+  height: 14px;
+  padding: 7px;
+  box-sizing: content-box;
+  object-fit: contain;
+  flex: 0 0 auto;
   border-radius: 3px;
-  color: var(--teams);
   background: #FFFFFF;
-  font-size: 0.78rem;
-  font-weight: 400;
 }
 
 .authSeparator {
@@ -865,13 +864,7 @@ a:focus-visible {
 .teamsMark {
   width: 72px;
   height: 72px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  color: #FFFFFF;
-  background: radial-gradient(circle at 70% 28%, #9EA5F2 0 10%, transparent 11%), linear-gradient(135deg, #6264A7, #7B83EB);
-  font-size: 2rem;
-  font-weight: 400;
+  object-fit: contain;
 }
 
 .serviceStatusContent,
@@ -1228,10 +1221,40 @@ a:focus-visible {
   overflow-x: auto;
 }
 
+.participantsPanel {
+  --expand-column-width: 42px;
+  --participant-column-width: 30%;
+  --score-column-width: 72px;
+  --signal-column-width: 142px;
+  --signal-column-padding: 12px;
+  --actions-column-width: 108px;
+}
+
 .participantTable {
   width: 100%;
   border-collapse: collapse;
-  min-width: 960px;
+  table-layout: fixed;
+  min-width: 860px;
+}
+
+.participantTable .expandColumn {
+  width: var(--expand-column-width);
+}
+
+.participantTable .participantColumn {
+  width: var(--participant-column-width);
+}
+
+.participantTable .scoreColumn {
+  width: var(--score-column-width);
+}
+
+.participantTable .signalColumn {
+  width: var(--signal-column-width);
+}
+
+.participantTable .actionsColumn {
+  width: var(--actions-column-width);
 }
 
 .participantTable th,
@@ -1249,6 +1272,31 @@ a:focus-visible {
   background: color-mix(in srgb, var(--notice) 68%, var(--panel));
 }
 
+.participantTable th.centeredSignalColumn,
+.participantTable td.statusLabelCell {
+  width: var(--signal-column-width);
+  padding-left: var(--signal-column-padding);
+  padding-right: var(--signal-column-padding);
+  text-align: center;
+}
+
+.participantHeaderLabel {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  gap: 5px;
+  color: #6B96C1;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.participantHeaderLabel img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
 .participantTable td:first-child {
   width: 42px;
 }
@@ -1257,11 +1305,20 @@ a:focus-visible {
   display: flex;
   gap: 10px;
   align-items: center;
+  min-width: 0;
 }
 
 .participantIdentity div {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.participantName,
+.participantIdentity div span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .participantIdentity div span {
@@ -1312,6 +1369,34 @@ a:focus-visible {
 
 .score-none {
   color: var(--muted);
+}
+
+.telemetryStatusLabel {
+  display: inline-block;
+  min-width: 66px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.telemetryStatus-excellent {
+  color: #3BB537;
+}
+
+.telemetryStatus-fair {
+  color: #F9AE00;
+}
+
+.telemetryStatus-poor {
+  color: #FC6F20;
+}
+
+.telemetryStatus-critical {
+  color: #EC2F3E;
+}
+
+.telemetryStatus-unknown {
+  color: #6B96C1;
 }
 
 .signalGlyph {
@@ -1381,58 +1466,78 @@ a:focus-visible {
   color: #8AB4E1;
 }
 
-.telemetryDetailRow td {
-  padding: 0 24px 12px 42px;
+.telemetryDetailRow > td {
+  padding-top: 16px;
+  padding-bottom: 18px;
+  vertical-align: top;
   background: color-mix(in srgb, var(--notice) 52%, var(--panel));
 }
 
-.telemetryDetail {
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid #CDE2FA;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--panel) 86%, var(--notice));
+.telemetryDetailLead {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
-:root[data-teams-theme="dark"] .telemetryDetail {
-  border-color: #4B5870;
+.telemetryDetailLead p {
+  margin: 0;
 }
 
-.telemetryRail {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 8px;
-  align-items: center;
-  color: #0058D7;
-  font-weight: 400;
-}
-
-.telemetryMetrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
-  gap: 0;
-}
-
-.metricItem {
-  min-height: 36px;
-  display: grid;
-  grid-template-columns: minmax(90px, 0.9fr) minmax(64px, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 5px 14px;
+.telemetryDetailCell {
   border-left: 1px solid var(--line);
 }
 
-.metricItem span {
+.telemetryDetailCell,
+.telemetryDetailActionCell {
+  text-align: center;
+}
+
+.telemetryGroupMetrics {
+  display: grid;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(var(--signal-column-width) - (var(--signal-column-padding) * 2));
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.metricItem {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  align-content: start;
+  padding: 0;
+  text-align: left;
+}
+
+.metricLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--muted);
   font-weight: 400;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.metricLabel img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.metricLabel span {
+  min-width: 0;
+  white-space: normal;
 }
 
 .metricItem strong {
-  overflow-wrap: anywhere;
+  padding-left: 22px;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .meetingHealthPanel {
@@ -1634,7 +1739,6 @@ a:focus-visible {
   .teamsMark {
     width: 54px;
     height: 54px;
-    font-size: 1.45rem;
   }
 
   .compactIncident {
@@ -1645,17 +1749,8 @@ a:focus-visible {
     display: none;
   }
 
-  .telemetryDetail {
-    grid-template-columns: 1fr;
-  }
-
-  .telemetryMetrics {
-    grid-template-columns: 1fr;
-  }
-
   .metricItem {
-    border-left: 0;
-    border-top: 1px solid var(--line);
+    border: 0;
   }
 
   .meetingHealthPanel {
