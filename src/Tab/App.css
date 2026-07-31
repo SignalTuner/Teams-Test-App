@@ -1483,6 +1483,76 @@ a:focus-visible {
   margin: 0;
 }
 
+.signalScoreTrend {
+  width: min(100%, 340px);
+  margin-top: 14px;
+  color: var(--ink);
+}
+
+.signalScoreTrendHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.signalScoreTrendHeader strong {
+  font-size: 0.9rem;
+}
+
+.signalScoreTrendHeader span {
+  max-width: 118px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signalScoreTrendSvg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 320 / 142;
+  overflow: visible;
+}
+
+.trendGridLine {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.trendYAxisLabel,
+.trendXAxisLabel {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.trendArea {
+  fill: color-mix(in srgb, var(--blue) 18%, transparent);
+  stroke: none;
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--blue);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+}
+
+.trendPoint {
+  fill: var(--panel);
+  stroke: var(--blue);
+  stroke-width: 2;
+}
+
+.signalScoreTrendState {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .telemetryDetailCell {
   border-left: 1px solid var(--line);
 }

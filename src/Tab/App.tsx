@@ -157,6 +157,17 @@ type AnalysisResult =
   | { mode: "user"; data: IndividualAnalysisResult }
   | { mode: "full"; data: FullAnalysisResult };
 
+type SignalScoreTrendPoint = {
+  timestampUtc: string;
+  averageScore: number;
+};
+
+type SignalScoreTrendResponse = {
+  userId: number;
+  deviceId: string | null;
+  points: SignalScoreTrendPoint[];
+};
+
 type SubscriptionPrompt = {
   requiredCredits: number;
   availableCredits: number;
@@ -419,6 +430,25 @@ function formatValue(value: unknown): string {
   }
 
   return String(value);
+}
+
+function formatTrendTimeLabel(timestampUtc: string): string {
+  const timestamp = new Date(timestampUtc);
+
+  if (Number.isNaN(timestamp.getTime())) {
+    return "--:--";
+  }
+
+  return timestamp.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatTrendTooltip(timestampUtc: string, score: number): string {
+  const timestamp = new Date(timestampUtc);
+  const timestampLabel = Number.isNaN(timestamp.getTime())
+    ? timestampUtc
+    : timestamp.toLocaleString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+
+  return `${timestampLabel}: ${Math.round(score)} Signal Score`;
 }
 
 function getDownloadUrl(): string | null {
@@ -1046,6 +1076,24 @@ function normalizeMeetingParticipant(value: unknown): MeetingParticipant {
     liveTelemetry: asTelemetryRecord(record.liveTelemetry ?? record.LiveTelemetry ?? record.telemetry ?? record.Telemetry),
     clientDataStatus: clientDataStatus as ClientDataStatus,
     clientIsActive: readBoolean(record, clientDataStatus === "active", "clientIsActive", "ClientIsActive"),
+  };
+}
+
+function normalizeSignalScoreTrend(value: unknown): SignalScoreTrendResponse {
+  const record = asRecord(value);
+  const points = readArray(record, "points", "Points").map((point) => {
+    const pointRecord = asRecord(point);
+
+    return {
+      timestampUtc: readString(pointRecord, "timestampUtc", "TimestampUtc", "minuteTimestampUtc", "MinuteTimestampUtc") ?? "",
+      averageScore: readNumber(pointRecord, 0, "averageScore", "AverageScore", "averageSignalScore", "AverageSignalScore"),
+    };
+  });
+
+  return {
+    userId: readNumber(record, 0, "userId", "UserId", "user_id"),
+    deviceId: readString(record, "deviceId", "DeviceId", "signalDeviceId", "SignalDeviceId"),
+    points,
   };
 }
 
@@ -1688,8 +1736,96 @@ function IncidentDetailModal({
   );
 }
 
+function SignalScoreTrendChart({
+  trend,
+  isLoading,
+  error,
+}: {
+  trend: SignalScoreTrendResponse | null;
+  isLoading: boolean;
+  error: string | null;
+}) {
+  if (error) {
+    return <p className="signalScoreTrendState">{error}</p>;
+  }
+
+  if (isLoading && !trend) {
+    return <p className="signalScoreTrendState">Loading Signal Score trend.</p>;
+  }
+
+  const points = trend?.points.slice(0, 10) ?? [];
+
+  if (points.length !== 10) {
+    return null;
+  }
+
+  const width = 320;
+  const height = 142;
+  const left = 34;
+  const right = 10;
+  const top = 12;
+  const bottom = 28;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const coordinates = points.map((point, index) => {
+    const score = Math.max(0, Math.min(100, point.averageScore));
+    return {
+      x: left + (plotWidth / (points.length - 1)) * index,
+      y: top + ((100 - score) / 100) * plotHeight,
+      score,
+      timestampUtc: point.timestampUtc,
+    };
+  });
+  const polylinePoints = coordinates.map((point) => `${point.x},${point.y}`).join(" ");
+  const areaPoints = `${left},${top + plotHeight} ${polylinePoints} ${left + plotWidth},${top + plotHeight}`;
+  const labelIndexes = [0, 4, 9];
+
+  return (
+    <div className="signalScoreTrend" aria-label="10-minute Signal Score trend">
+      <div className="signalScoreTrendHeader">
+        <strong>10-minute Signal Score</strong>
+        {trend?.deviceId ? <span title={trend.deviceId}>{trend.deviceId}</span> : null}
+      </div>
+      <svg className="signalScoreTrendSvg" role="img" viewBox={`0 0 ${width} ${height}`}>
+        <title>Average Signal Score for each of the last 10 minutes</title>
+        {[0, 50, 100].map((tick) => {
+          const y = top + ((100 - tick) / 100) * plotHeight;
+
+          return (
+            <g key={tick}>
+              <line className="trendGridLine" x1={left} x2={width - right} y1={y} y2={y} />
+              <text className="trendYAxisLabel" x={left - 8} y={y + 4}>
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        <polygon className="trendArea" points={areaPoints} />
+        <polyline className="trendLine" points={polylinePoints} />
+        {coordinates.map((point) => (
+          <circle className="trendPoint" cx={point.x} cy={point.y} key={point.timestampUtc} r="3.4">
+            <title>{formatTrendTooltip(point.timestampUtc, point.score)}</title>
+          </circle>
+        ))}
+        {labelIndexes.map((index) => (
+          <text
+            className="trendXAxisLabel"
+            key={index}
+            textAnchor={index === 0 ? "start" : index === 9 ? "end" : "middle"}
+            x={coordinates[index].x}
+            y={height - 7}
+          >
+            {formatTrendTimeLabel(coordinates[index].timestampUtc)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 function Dashboard({
   analysis,
+  apiBaseUrl,
   dashboard,
   error,
   isLoading,
@@ -1698,10 +1834,12 @@ function Dashboard({
   onInvite,
   onSignOut,
   onThemePreferenceChange,
+  sessionToken,
   subscriptionPrompt,
   themePreference,
 }: {
   analysis: AnalysisResult | null;
+  apiBaseUrl: string;
   dashboard: DashboardData;
   error: string | null;
   isLoading: boolean;
@@ -1710,6 +1848,7 @@ function Dashboard({
   onInvite: () => Promise<void>;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
+  sessionToken: string;
   subscriptionPrompt: SubscriptionPrompt | null;
   themePreference: SignalTunerThemePreference;
 }) {
@@ -1719,6 +1858,9 @@ function Dashboard({
   const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(
     dashboard.participants[0]?.userId ?? null
   );
+  const [signalScoreTrends, setSignalScoreTrends] = React.useState<Record<number, SignalScoreTrendResponse>>({});
+  const [signalScoreTrendLoadingId, setSignalScoreTrendLoadingId] = React.useState<number | null>(null);
+  const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
   const user = dashboard.currentUser;
   const activeParticipants = dashboard.participants.filter((participant) => participant.clientDataStatus === "active");
   const activeIncidents =
@@ -1746,6 +1888,10 @@ function Dashboard({
     activeParticipants.length === dashboard.participants.length
       ? "All participants with SignalTuner data are reporting into this meeting."
       : `Participant connectivity is mixed. ${dashboard.participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
+  const expandedParticipant = dashboard.participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
+  const expandedParticipantHasActiveAnalysis = Boolean(
+    expandedParticipant && getParticipantTelemetry(analysis, expandedParticipant.userId)
+  );
 
   React.useEffect(() => {
     if (!selectedIncident) {
@@ -1761,6 +1907,70 @@ function Dashboard({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIncident]);
+
+  React.useEffect(() => {
+    if (!expandedParticipantId || !apiBaseUrl || !sessionToken) {
+      return;
+    }
+
+    if (!expandedParticipant || expandedParticipant.clientDataStatus !== "active" || !expandedParticipantHasActiveAnalysis) {
+      return;
+    }
+
+    let isCancelled = false;
+    const participantId = expandedParticipant.userId;
+
+    const loadTrend = async () => {
+      setSignalScoreTrendLoadingId(participantId);
+
+      try {
+        const data = normalizeSignalScoreTrend(
+          await fetchJson<unknown>(
+            `${apiBaseUrl}/api/TeamsMeetings/${dashboard.meetingSessionId}/signal-score-trend/${participantId}`,
+            {
+              headers: buildAuthHeaders(sessionToken),
+            }
+          )
+        );
+
+        if (!isCancelled) {
+          setSignalScoreTrends((current) => ({ ...current, [participantId]: data }));
+          setSignalScoreTrendErrors((current) => {
+            const next = { ...current };
+            delete next[participantId];
+            return next;
+          });
+        }
+      } catch {
+        if (!isCancelled) {
+          setSignalScoreTrendErrors((current) => ({
+            ...current,
+            [participantId]: "Signal Score trend is unavailable.",
+          }));
+        }
+      } finally {
+        if (!isCancelled) {
+          setSignalScoreTrendLoadingId((current) => (current === participantId ? null : current));
+        }
+      }
+    };
+
+    void loadTrend();
+    const intervalId = window.setInterval(() => void loadTrend(), 60000);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    apiBaseUrl,
+    dashboard.meetingSessionId,
+    expandedParticipant?.clientDataStatus,
+    expandedParticipant?.userId,
+    expandedParticipantHasActiveAnalysis,
+    expandedParticipantId,
+    sessionToken,
+  ]);
 
   return (
     <main className="pageShell dashboardShell">
@@ -1956,9 +2166,10 @@ function Dashboard({
               {dashboard.participants.map((participant) => {
                 const hasData = participant.clientDataStatus === "active";
                 const isExpanded = expandedParticipantId === participant.userId;
-                const telemetry = getParticipantLiveTelemetry(participant) ?? getParticipantTelemetry(analysis, participant.userId);
+                const telemetry = getParticipantTelemetry(analysis, participant.userId);
                 const issues = getParticipantIssues(analysis, participant.userId);
                 const tone = getSignalTone(participant.signalScore);
+                const analysisCoversParticipant = Boolean(telemetry);
 
                 return (
                   <React.Fragment key={participant.userId}>
@@ -2025,6 +2236,9 @@ function Dashboard({
                           hasData={hasData}
                           issues={issues}
                           onAnalyze={() => onAnalyzeUser(participant.userId)}
+                          signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
+                          signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
+                          signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingId === participant.userId}
                           telemetry={telemetry}
                         />
                       </tr>
@@ -2075,11 +2289,17 @@ function ParticipantTelemetryDetail({
   hasData,
   issues,
   onAnalyze,
+  signalScoreTrend,
+  signalScoreTrendError,
+  signalScoreTrendLoading,
   telemetry,
 }: {
   hasData: boolean;
   issues: Issue[];
   onAnalyze: () => Promise<void>;
+  signalScoreTrend: SignalScoreTrendResponse | null;
+  signalScoreTrendError: string | null;
+  signalScoreTrendLoading: boolean;
   telemetry: TelemetryRecord | null;
 }) {
   const recommendation = issues[0]?.recommendation ?? (hasData ? "Run analysis to populate participant telemetry." : "Prompt the participant to activate the local client.");
@@ -2129,6 +2349,13 @@ function ParticipantTelemetryDetail({
     <>
       <td className="telemetryDetailLead" colSpan={3}>
         <p>{recommendation}</p>
+        {(signalScoreTrend || signalScoreTrendLoading || signalScoreTrendError) && (
+          <SignalScoreTrendChart
+            error={signalScoreTrendError}
+            isLoading={signalScoreTrendLoading}
+            trend={signalScoreTrend}
+          />
+        )}
       </td>
       {telemetryGroups.map((group) => (
         <td className="telemetryDetailCell" key={group.title}>
@@ -2750,6 +2977,7 @@ export default function App() {
       {!shouldShowClientPrompt && (
         <Dashboard
           analysis={analysis}
+          apiBaseUrl={apiBaseUrl}
           dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
@@ -2758,6 +2986,7 @@ export default function App() {
           onInvite={inviteParticipants}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
+          sessionToken={sessionToken}
           subscriptionPrompt={subscriptionPrompt}
           themePreference={themePreference}
         />
