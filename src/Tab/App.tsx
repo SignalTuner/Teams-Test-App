@@ -12,6 +12,7 @@ import networkDivIcon from "./assets/network-div-icon.svg";
 import networkLatencyIcon from "./assets/network-latency-icon.svg";
 import networkPacketLossIcon from "./assets/network-packet-loss-icon.svg";
 import networkUploadIcon from "./assets/network-upload-icon.svg";
+import signalTunerDarkLogo from "./assets/signaltuner-logo-horizontal-darkmode.png";
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
 import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
@@ -1263,6 +1264,15 @@ function TeamsAuthButton({
   );
 }
 
+function SignalTunerLogo({ className }: { className: string }) {
+  return (
+    <span className={`${className} logoSwap`}>
+      <img className="logoSwapLight" src={signalTunerLogo} alt="SignalTuner" />
+      <img className="logoSwapDark" src={signalTunerDarkLogo} alt="SignalTuner" />
+    </span>
+  );
+}
+
 function BrandPanel() {
   const previewParticipants = [
     { name: "Alicia Johnson", status: "Good", score: 98, className: "previewGood" },
@@ -1272,7 +1282,7 @@ function BrandPanel() {
 
   return (
     <aside className="brandPanel">
-      <img className="brandLogo" src={signalTunerLogo} alt="SignalTuner" />
+      <SignalTunerLogo className="brandLogo" />
       <div className="brandCopy">
         <h1>Better calls.<br />Better meetings.</h1>
         <p>
@@ -1331,7 +1341,7 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
       <div className="authLayout">
         <BrandPanel />
         <section className="authCard" aria-labelledby="auth-title">
-          <img className="compactAuthLogo" src={signalTunerLogo} alt="SignalTuner" />
+          <SignalTunerLogo className="compactAuthLogo" />
           {children}
         </section>
       </div>
@@ -1975,7 +1985,7 @@ function Dashboard({
   return (
     <main className="pageShell dashboardShell">
       <header className="appHeader">
-        <img className="appLogo" src={signalTunerLogo} alt="SignalTuner" />
+        <SignalTunerLogo className="appLogo" />
         <div className="accountMenuWrap">
           <button
             aria-expanded={accountOpen}

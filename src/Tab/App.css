@@ -156,14 +156,34 @@ a {
   height: auto;
 }
 
+.logoSwap {
+  position: relative;
+}
+
+.logoSwap img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.logoSwapDark {
+  display: none;
+}
+
+:root[data-teams-theme="dark"] .logoSwapLight {
+  display: none;
+}
+
+:root[data-teams-theme="dark"] .logoSwapDark {
+  display: block;
+}
+
 .compactAuthLogo {
   display: none;
   width: min(100%, 260px);
   margin-bottom: 6px;
 }
 
-:root[data-teams-theme="dark"] .brandLogo,
-:root[data-teams-theme="dark"] .compactAuthLogo,
 :root[data-teams-theme="contrast"] .brandLogo,
 :root[data-teams-theme="contrast"] .compactAuthLogo {
   padding: 8px;
@@ -730,7 +750,6 @@ a:focus-visible {
   display: block;
 }
 
-:root[data-teams-theme="dark"] .appLogo,
 :root[data-teams-theme="contrast"] .appLogo {
   padding: 6px;
   border-radius: 3px;
