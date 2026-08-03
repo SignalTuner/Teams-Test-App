@@ -53,9 +53,23 @@ type AuthResponse = {
   activationCode?: string;
   UserFirstName?: string;
   UserLastName?: string;
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
   IsTeamAdmin?: boolean;
   UserTeamID?: number;
   UserHasSeenOnboarding?: boolean;
+  profileRequired?: boolean;
+  ProfileRequired?: boolean;
+  authProvider?: string;
+  userCreated?: boolean;
+  user?: unknown;
+  User?: unknown;
+};
+
+type PendingProfileAuth = {
+  token: string;
+  user: CurrentUser;
 };
 
 type ActivationCodeResponse = {
@@ -409,12 +423,46 @@ async function signInWithEmail(apiBaseUrl: string, email: string, password: stri
 }
 
 async function createAccountWithEmail(
-  _apiBaseUrl: string,
-  _request: { email: string; password: string }
+  apiBaseUrl: string,
+  request: { email: string; password: string; firstName: string; lastName: string }
 ): Promise<AuthResponse> {
-  // TODO: Add a backend JSON endpoint for Teams app email registration.
-  // Existing /api/User/AddUser requires form-only profile fields that the requested minimal Teams registration page must not collect.
-  throw new Error("Email account creation is not available in the Teams app yet.");
+  const formData = new FormData();
+  formData.append("Email", request.email.trim());
+  formData.append("Password", request.password);
+  formData.append("FirstName", request.firstName.trim());
+  formData.append("LastName", request.lastName.trim());
+  formData.append("SmsAlerts", "false");
+
+  const result = await fetchJson<{ status?: string; message?: string }>(`${apiBaseUrl}/api/User/AddUser`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (result.status?.toLowerCase() === "error") {
+    throw new Error(result.message || "Unable to create account.");
+  }
+
+  const response = await signInWithEmail(apiBaseUrl, request.email, request.password);
+  response.email = response.email ?? response.Email ?? request.email.trim();
+  response.firstName = response.firstName ?? response.UserFirstName ?? request.firstName.trim();
+  response.lastName = response.lastName ?? response.UserLastName ?? request.lastName.trim();
+  response.displayName = response.displayName ?? `${request.firstName.trim()} ${request.lastName.trim()}`;
+  return response;
+}
+
+async function completeUserProfile(
+  apiBaseUrl: string,
+  token: string,
+  request: { firstName: string; lastName: string }
+): Promise<AuthResponse> {
+  return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/profile`, {
+    method: "PUT",
+    headers: buildAuthHeaders(token),
+    body: JSON.stringify({
+      firstName: request.firstName.trim(),
+      lastName: request.lastName.trim(),
+    }),
+  });
 }
 
 function normalizeBaseUrl(baseUrl: string | undefined): string {
@@ -980,6 +1028,23 @@ function normalizeCurrentUser(value: unknown): CurrentUser {
   };
 }
 
+function normalizeAuthCurrentUser(response: AuthResponse): CurrentUser {
+  const nestedUser = normalizeCurrentUser(response.user ?? response.User);
+  const topLevelUser = normalizeCurrentUser(response);
+  return mergeCurrentUser(nestedUser, topLevelUser);
+}
+
+function isProfileRequired(response: AuthResponse, user: CurrentUser): boolean {
+  const record = asRecord(response);
+  const nested = asRecord(response.user ?? response.User);
+
+  return (
+    readBoolean(record, false, "profileRequired", "ProfileRequired") ||
+    readBoolean(nested, false, "profileRequired", "ProfileRequired") ||
+    (!user.firstName && !user.lastName && readBoolean(record, false, "userCreated", "UserCreated"))
+  );
+}
+
 function normalizeActivationCodeResponse(value: unknown): string | null {
   const record = asRecord(value);
   return readString(record, "activationCode", "ActivationCode", "userActivationCode", "UserActivationCode");
@@ -1482,20 +1547,26 @@ function CreateAccountPage({
   busyState: AuthBusyState;
   error: string | null;
   isRunningInTeams: boolean;
-  onEmailRegister: (email: string, password: string) => Promise<void>;
+  onEmailRegister: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   onSignIn: () => void;
   onTeamsSignIn: () => Promise<void>;
 }) {
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [termsAccepted, setTermsAccepted] = React.useState(false);
   const [fieldErrors, setFieldErrors] = React.useState<{
+    firstName?: string;
+    lastName?: string;
     email?: string;
     password?: string;
     confirmPassword?: string;
     terms?: string;
   }>({});
+  const firstNameRef = React.useRef<HTMLInputElement | null>(null);
+  const lastNameRef = React.useRef<HTMLInputElement | null>(null);
   const emailRef = React.useRef<HTMLInputElement | null>(null);
   const termsRef = React.useRef<HTMLInputElement | null>(null);
   const isBusy = busyState !== "idle";
@@ -1505,6 +1576,8 @@ function CreateAccountPage({
     event.preventDefault();
 
     const nextErrors = {
+      firstName: firstName.trim() ? undefined : "Enter your first name.",
+      lastName: lastName.trim() ? undefined : "Enter your last name.",
       email: isValidEmail(email) ? undefined : "Enter a valid email address.",
       password: password.length >= 8 ? undefined : PASSWORD_REQUIREMENT_TEXT,
       confirmPassword: password === confirmPassword ? undefined : "Passwords must match.",
@@ -1512,6 +1585,16 @@ function CreateAccountPage({
     };
 
     setFieldErrors(nextErrors);
+
+    if (nextErrors.firstName) {
+      firstNameRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.lastName) {
+      lastNameRef.current?.focus();
+      return;
+    }
 
     if (nextErrors.email) {
       emailRef.current?.focus();
@@ -1527,7 +1610,7 @@ function CreateAccountPage({
       return;
     }
 
-    await onEmailRegister(email, password);
+    await onEmailRegister(email, password, firstName, lastName);
   };
 
   return (
@@ -1553,6 +1636,46 @@ function CreateAccountPage({
         <span>or create with email</span>
       </div>
       <form className="authForm" aria-busy={busyState === "email-register"} onSubmit={(event) => void submitRegistration(event)}>
+        <div className="splitFields">
+          <div className="fieldGroup">
+            <label htmlFor="register-first-name">First name</label>
+            <input
+              aria-describedby={fieldErrors.firstName ? "register-first-name-error" : undefined}
+              aria-invalid={Boolean(fieldErrors.firstName)}
+              autoComplete="given-name"
+              id="register-first-name"
+              onChange={(event) => setFirstName(event.target.value)}
+              placeholder="First name"
+              ref={firstNameRef}
+              type="text"
+              value={firstName}
+            />
+            {fieldErrors.firstName && (
+              <p className="fieldError" id="register-first-name-error">
+                {fieldErrors.firstName}
+              </p>
+            )}
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="register-last-name">Last name</label>
+            <input
+              aria-describedby={fieldErrors.lastName ? "register-last-name-error" : undefined}
+              aria-invalid={Boolean(fieldErrors.lastName)}
+              autoComplete="family-name"
+              id="register-last-name"
+              onChange={(event) => setLastName(event.target.value)}
+              placeholder="Last name"
+              ref={lastNameRef}
+              type="text"
+              value={lastName}
+            />
+            {fieldErrors.lastName && (
+              <p className="fieldError" id="register-last-name-error">
+                {fieldErrors.lastName}
+              </p>
+            )}
+          </div>
+        </div>
         <div className="fieldGroup">
           <label htmlFor="register-email">Email</label>
           <input
@@ -1620,6 +1743,110 @@ function CreateAccountPage({
           Sign in
         </button>
       </div>
+    </AuthLayout>
+  );
+}
+
+function CompleteProfilePage({
+  busyState,
+  error,
+  user,
+  onSubmit,
+  onSignOut,
+}: {
+  busyState: AuthBusyState;
+  error: string | null;
+  user: CurrentUser;
+  onSubmit: (firstName: string, lastName: string) => Promise<void>;
+  onSignOut: () => void;
+}) {
+  const [firstName, setFirstName] = React.useState(user.firstName ?? "");
+  const [lastName, setLastName] = React.useState(user.lastName ?? "");
+  const [fieldErrors, setFieldErrors] = React.useState<{ firstName?: string; lastName?: string }>({});
+  const firstNameRef = React.useRef<HTMLInputElement | null>(null);
+  const lastNameRef = React.useRef<HTMLInputElement | null>(null);
+  const isBusy = busyState !== "idle";
+
+  const submitProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const nextErrors = {
+      firstName: firstName.trim() ? undefined : "Enter your first name.",
+      lastName: lastName.trim() ? undefined : "Enter your last name.",
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.firstName) {
+      firstNameRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.lastName) {
+      lastNameRef.current?.focus();
+      return;
+    }
+
+    await onSubmit(firstName, lastName);
+  };
+
+  return (
+    <AuthLayout>
+      <div className="authHeader">
+        <h1 id="auth-title">Finish your profile</h1>
+        <p>Enter your name so teammates can recognize you in SignalTuner dashboards.</p>
+      </div>
+      <AuthErrorAlert message={error} />
+      {user.email && <p className="authNotice">Signed in with Microsoft Teams as {user.email}.</p>}
+      <form className="authForm" aria-busy={busyState === "teams-sso"} onSubmit={(event) => void submitProfile(event)}>
+        <div className="splitFields">
+          <div className="fieldGroup">
+            <label htmlFor="profile-first-name">First name</label>
+            <input
+              aria-describedby={fieldErrors.firstName ? "profile-first-name-error" : undefined}
+              aria-invalid={Boolean(fieldErrors.firstName)}
+              autoComplete="given-name"
+              id="profile-first-name"
+              onChange={(event) => setFirstName(event.target.value)}
+              placeholder="First name"
+              ref={firstNameRef}
+              type="text"
+              value={firstName}
+            />
+            {fieldErrors.firstName && (
+              <p className="fieldError" id="profile-first-name-error">
+                {fieldErrors.firstName}
+              </p>
+            )}
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="profile-last-name">Last name</label>
+            <input
+              aria-describedby={fieldErrors.lastName ? "profile-last-name-error" : undefined}
+              aria-invalid={Boolean(fieldErrors.lastName)}
+              autoComplete="family-name"
+              id="profile-last-name"
+              onChange={(event) => setLastName(event.target.value)}
+              placeholder="Last name"
+              ref={lastNameRef}
+              type="text"
+              value={lastName}
+            />
+            {fieldErrors.lastName && (
+              <p className="fieldError" id="profile-last-name-error">
+                {fieldErrors.lastName}
+              </p>
+            )}
+          </div>
+        </div>
+        <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
+          {busyState === "teams-sso" ? <Spinner /> : null}
+          <span>Continue</span>
+        </button>
+      </form>
+      <button className="secondaryButton fullWidthButton" disabled={isBusy} onClick={onSignOut} type="button">
+        Sign out
+      </button>
     </AuthLayout>
   );
 }
@@ -2416,6 +2643,7 @@ export default function App() {
   const [isClientPromptDismissed, setIsClientPromptDismissed] = React.useState(false);
   const [activationCodeError, setActivationCodeError] = React.useState<string | null>(null);
   const [accountUser, setAccountUser] = React.useState<CurrentUser | null>(null);
+  const [pendingProfileAuth, setPendingProfileAuth] = React.useState<PendingProfileAuth | null>(null);
   const isMountedRef = React.useRef(true);
 
   const parseCreditError = React.useCallback((caught: unknown): boolean => {
@@ -2563,10 +2791,20 @@ export default function App() {
   const completeAuth = React.useCallback(
     async (response: AuthResponse) => {
       const signalTunerSessionToken = getSignalTunerSessionToken(response);
-      const responseUser = normalizeCurrentUser(response);
+      const responseUser = normalizeAuthCurrentUser(response);
+
+      if (isProfileRequired(response, responseUser)) {
+        setPendingProfileAuth({
+          token: signalTunerSessionToken,
+          user: responseUser,
+        });
+        setAccountUser(responseUser);
+        return;
+      }
 
       window.localStorage.setItem(SIGNALTUNER_SESSION_TOKEN_KEY, signalTunerSessionToken);
       window.localStorage.removeItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY);
+      setPendingProfileAuth(null);
       setSessionToken(signalTunerSessionToken);
       setIsClientPromptDismissed(false);
       setActivationCodeError(null);
@@ -2675,6 +2913,7 @@ export default function App() {
       !meetingContext ||
       sessionToken ||
       dashboard ||
+      pendingProfileAuth ||
       window.localStorage.getItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY) === "true" ||
       window.sessionStorage.getItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY) === "true"
     ) {
@@ -2711,7 +2950,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isRunningInTeams, meetingContext, sessionToken]);
+  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isRunningInTeams, meetingContext, pendingProfileAuth, sessionToken]);
 
   React.useEffect(() => {
     if (!sessionToken || !meetingContext || dashboard) {
@@ -2813,7 +3052,7 @@ export default function App() {
   );
 
   const emailRegister = React.useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, firstName: string, lastName: string) => {
       if (!apiBaseUrl) {
         setError("SignalTuner is temporarily unavailable. Please try again.");
         return;
@@ -2824,7 +3063,7 @@ export default function App() {
       setError(null);
 
       try {
-        const response = await createAccountWithEmail(apiBaseUrl, { email, password });
+        const response = await createAccountWithEmail(apiBaseUrl, { email, password, firstName, lastName });
         await completeAuth(response);
       } catch (caught) {
         setError(sanitizeAuthError(caught, "We could not create your account. Review the information and try again."));
@@ -2834,6 +3073,31 @@ export default function App() {
       }
     },
     [apiBaseUrl, completeAuth]
+  );
+
+  const submitProfile = React.useCallback(
+    async (firstName: string, lastName: string) => {
+      if (!apiBaseUrl || !pendingProfileAuth) {
+        setError("SignalTuner is temporarily unavailable. Please try again.");
+        return;
+      }
+
+      setIsLoading(true);
+      setBusyState("teams-sso");
+      setError(null);
+
+      try {
+        const response = await completeUserProfile(apiBaseUrl, pendingProfileAuth.token, { firstName, lastName });
+        await completeAuth(response);
+        window.sessionStorage.removeItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY);
+      } catch (caught) {
+        setError(sanitizeAuthError(caught, "We could not save your profile. Review your name and try again."));
+      } finally {
+        setIsLoading(false);
+        setBusyState("idle");
+      }
+    },
+    [apiBaseUrl, completeAuth, pendingProfileAuth]
   );
 
   const analyzeUser = React.useCallback(
@@ -2922,10 +3186,23 @@ export default function App() {
     setIsClientPromptDismissed(false);
     setActivationCodeError(null);
     setAccountUser(null);
+    setPendingProfileAuth(null);
   }, []);
 
   if (isConfigPage) {
     return <ConfigPage />;
+  }
+
+  if (pendingProfileAuth && !sessionToken && !dashboard) {
+    return (
+      <CompleteProfilePage
+        busyState={busyState}
+        error={error}
+        user={pendingProfileAuth.user}
+        onSubmit={submitProfile}
+        onSignOut={signOut}
+      />
+    );
   }
 
   if (!sessionToken || !dashboard) {

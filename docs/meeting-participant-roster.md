@@ -23,6 +23,7 @@ Users who do not open SignalTuner and authenticate do not appear in the dashboar
 
 ```http
 POST /api/User/teams-sso
+PUT  /api/User/profile
 POST /api/auth/google/start
 POST /api/auth/github/start
 POST /api/auth/email-magic-code/request
@@ -32,6 +33,8 @@ POST /api/auth/logout
 ```
 
 For Teams SSO, the tab initializes TeamsJS, reads context, calls `teamsJs.authentication.getAuthToken()`, and sends that Teams access token once to `/api/User/teams-sso`. The backend should validate provider tokens server-side and return a SignalTuner session token or secure session cookie. Provider tokens must not be exposed back to the frontend after login, and the Teams SSO token should not be used as the long-term SignalTuner app session.
+
+When `/api/User/teams-sso` creates a SignalTuner user, or resolves an SSO user with no recorded first or last name, the response includes `profileRequired: true`. The Teams tab must collect first and last name before joining a meeting session, then call `PUT /api/User/profile` with the SignalTuner bearer token. The backend writes `Users.user_first_name`, `Users.user_last_name`, and `Users.user_initials`, and participant/dashboard display should use the recorded name instead of falling back to email.
 
 New users receive 5 free credits. Provider identities should be stored in `UserAuthIdentities` using stable provider subject IDs.
 

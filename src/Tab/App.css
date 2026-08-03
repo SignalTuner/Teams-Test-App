@@ -401,6 +401,12 @@ a {
   gap: 12px;
 }
 
+.splitFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .fieldGroup {
   gap: 7px;
 }
@@ -1876,6 +1882,10 @@ a:focus-visible {
 
   .compactAuthLogo {
     display: block;
+  }
+
+  .splitFields {
+    grid-template-columns: 1fr;
   }
 
   .topBar,

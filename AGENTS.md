@@ -175,6 +175,17 @@ Never include production rows, personal data, credentials, hostnames, GTID state
 
 If the backend/database repository is unavailable while working in another project, document the exact required migration and backend updates as cross-project follow-up rather than creating an unofficial schema copy.
 
+### MySQL Workbench command compatibility
+
+When generating one-off MySQL cleanup, verification, or test-data commands for the user to run in MySQL Workbench, account for common Workbench and managed-MySQL restrictions:
+
+- If temporary tables are needed, define explicit primary keys instead of using `CREATE TEMPORARY TABLE ... AS SELECT`, because `sql_require_primary_key` may be enabled.
+- Do not force `ENGINE=MEMORY`; some environments disable the MEMORY engine. Let MySQL choose the default temporary table engine unless a specific engine is required and confirmed available.
+- Start scripts with `DROP TEMPORARY TABLE IF EXISTS ...` for any temp tables they create, because a failed prior Workbench run can leave temp tables in the current session.
+- Prefer transactions for multi-table cleanup scripts and order deletes around foreign keys using the canonical `database/schema.sql`.
+- MySQL Workbench safe update mode may reject valid joined deletes. For intentional one-off cleanup scripts, include `SET SQL_SAFE_UPDATES = 0;` at the start and `SET SQL_SAFE_UPDATES = 1;` after `COMMIT;`, and explain that this changes only the current Workbench session.
+- Do not ask the user to globally disable `sql_require_primary_key`, safe updates, or other safety settings unless there is no session-scoped alternative.
+
 ## Reuse of tools, vendors, and patterns
 
 Prefer technologies, vendors, libraries, infrastructure, conventions, and implementation patterns already established in the SignalTuner ecosystem.
