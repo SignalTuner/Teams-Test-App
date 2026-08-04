@@ -232,6 +232,7 @@ const EXAMPLE_ACTIVE_INCIDENTS: ServiceIncident[] = [
 ];
 
 type AuthPageMode = "login" | "create-account";
+type InAppPage = "dashboard" | "account" | "settings";
 type AuthBusyState = "idle" | "initializing-teams" | "checking-session" | "auto-sso" | "teams-sso" | "email-login" | "email-register" | "success";
 type TeamsTheme = "default" | "dark" | "contrast";
 type SignalTunerThemePreference = "light" | "dark";
@@ -242,6 +243,9 @@ const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
 const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
 const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters.";
+const CLIENT_PROMPT_REFRESH_INTERVAL_MS = 20000;
+const CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS = 2000;
+const CLIENT_PROMPT_COPIED_REFRESH_DURATION_MS = 60000;
 
 let teamsInitializationPromise: Promise<teamsJs.app.Context> | null = null;
 
@@ -1274,7 +1278,7 @@ function PasswordField({
         <input
           aria-describedby={[helpText ? helpId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined}
           aria-invalid={Boolean(error)}
-          autoComplete={id.includes("new") ? "new-password" : "current-password"}
+          autoComplete={id.includes("new") || id.includes("confirm") ? "new-password" : "current-password"}
           id={id}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
@@ -1326,6 +1330,54 @@ function TeamsAuthButton({
       {isBusy ? <Spinner /> : <img className="teamsGlyph" src={microsoftTeamsLogo} alt="" aria-hidden="true" />}
       <span>{isBusy ? "Signing you in with Microsoft Teams..." : label}</span>
     </button>
+  );
+}
+
+function CopyableActivationCode({
+  activationCode,
+  onCopied,
+}: {
+  activationCode: string;
+  onCopied?: () => void;
+}) {
+  const [copyStatus, setCopyStatus] = React.useState<"idle" | "copied" | "failed">("idle");
+  const codeIsAvailable = activationCode !== "Loading..." && activationCode !== "Not available";
+
+  const copyActivationCode = async () => {
+    if (!codeIsAvailable) {
+      return;
+    }
+
+    try {
+      await window.navigator.clipboard.writeText(activationCode);
+      setCopyStatus("copied");
+      onCopied?.();
+      window.setTimeout(() => setCopyStatus("idle"), 1800);
+    } catch {
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 2600);
+    }
+  };
+
+  return (
+    <div className="copyableCodeWrap">
+      <button
+        aria-label={codeIsAvailable ? "Copy desktop client activation code" : "Desktop client activation code unavailable"}
+        className="copyableCodeButton"
+        disabled={!codeIsAvailable}
+        onClick={() => void copyActivationCode()}
+        title={codeIsAvailable ? "Copy activation code" : undefined}
+        type="button"
+      >
+        <strong>{activationCode}</strong>
+        <span className="copyGlyph" aria-hidden="true" />
+      </button>
+      {copyStatus !== "idle" && (
+        <span className={`copyStatus copyStatus-${copyStatus}`} role="status">
+          {copyStatus === "copied" ? "Copied" : "Copy failed"}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -1868,6 +1920,56 @@ function ClientPrompt({
 }) {
   const downloadUrl = getDownloadUrl();
   const activationCode = user.activationCode?.trim() || "Loading...";
+  const [rapidPollingEndsAt, setRapidPollingEndsAt] = React.useState<number | null>(null);
+  const onRefreshRef = React.useRef(onRefresh);
+  const refreshInFlightRef = React.useRef(false);
+
+  React.useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  const runRefresh = React.useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+
+    try {
+      await onRefreshRef.current();
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, []);
+
+  const handleActivationCodeCopied = React.useCallback(() => {
+    setRapidPollingEndsAt(Date.now() + CLIENT_PROMPT_COPIED_REFRESH_DURATION_MS);
+    void runRefresh();
+  }, [runRefresh]);
+
+  const refreshIntervalMs =
+    rapidPollingEndsAt === null ? CLIENT_PROMPT_REFRESH_INTERVAL_MS : CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS;
+
+  React.useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void runRefresh();
+    }, refreshIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshIntervalMs, runRefresh]);
+
+  React.useEffect(() => {
+    if (rapidPollingEndsAt === null) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => setRapidPollingEndsAt(null),
+      Math.max(rapidPollingEndsAt - Date.now(), 0)
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [rapidPollingEndsAt]);
 
   return (
     <section className="panel clientPrompt">
@@ -1880,7 +1982,7 @@ function ClientPrompt({
       </div>
       <div className="activationCodeBlock">
         <span>Activation code</span>
-        <strong>{activationCode}</strong>
+        <CopyableActivationCode activationCode={activationCode} onCopied={handleActivationCodeCopied} />
         {activationCodeError && <p>{activationCodeError}</p>}
       </div>
       <div className="buttonRow">
@@ -2060,15 +2162,166 @@ function SignalScoreTrendChart({
   );
 }
 
+function AccountPage({ user }: { user: CurrentUser }) {
+  const [displayName, setDisplayName] = React.useState(user.displayName ?? "");
+  const [email, setEmail] = React.useState(user.email ?? "");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const subscriptionPlan = user.subscriptionPlan?.trim() || "Free";
+  const activationCode = user.activationCode?.trim() || "Not available";
+
+  React.useEffect(() => {
+    setDisplayName(user.displayName ?? "");
+    setEmail(user.email ?? "");
+  }, [user.displayName, user.email]);
+
+  return (
+    <section className="panel accountPagePanel">
+      <div className="sectionTitleRow">
+        <div>
+          <h2>Account</h2>
+        </div>
+      </div>
+      <div className="settingsGrid">
+        <form className="settingsSection" aria-label="Account profile">
+          <div className="fieldGroup">
+            <label htmlFor="account-display-name">Display name</label>
+            <input
+              autoComplete="name"
+              id="account-display-name"
+              onChange={(event) => setDisplayName(event.target.value)}
+              type="text"
+              value={displayName}
+            />
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="account-email">Email</label>
+            <input
+              autoComplete="email"
+              id="account-email"
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              value={email}
+            />
+          </div>
+          <div className="splitFields">
+            <PasswordField
+              id="account-new-password"
+              label="New password"
+              onChange={setNewPassword}
+              placeholder="Enter a new password"
+              value={newPassword}
+            />
+            <PasswordField
+              error={newPassword && confirmPassword && newPassword !== confirmPassword ? "Passwords must match." : undefined}
+              id="account-confirm-password"
+              label="Confirm password"
+              onChange={setConfirmPassword}
+              placeholder="Confirm new password"
+              value={confirmPassword}
+            />
+          </div>
+          <button className="primaryButton settingsSaveButton" disabled type="button">
+            Save account changes
+          </button>
+        </form>
+        <aside className="settingsSection accountMetaSection">
+          <div className="activationCodeBlock accountActivationCode">
+            <span>Desktop client activation code</span>
+            <CopyableActivationCode activationCode={activationCode} />
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="account-organization">Organization</label>
+            <input id="account-organization" readOnly type="text" value="" />
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="account-subscription">Subscription</label>
+            <input id="account-subscription" readOnly type="text" value={subscriptionPlan} />
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function SettingsPage({
+  themePreference,
+  onThemePreferenceChange,
+}: {
+  themePreference: SignalTunerThemePreference;
+  onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
+}) {
+  return (
+    <section className="panel settingsPagePanel">
+      <div className="sectionTitleRow">
+        <div>
+          <h2>Settings</h2>
+        </div>
+      </div>
+      <div className="settingsGrid">
+        <div className="settingsSection themePreferenceControl">
+          <strong>Appearance</strong>
+          <div className="segmentedControl" role="group" aria-label="SignalTuner appearance">
+            <button
+              aria-pressed={themePreference === "light"}
+              className={themePreference === "light" ? "activeSegment" : ""}
+              onClick={() => onThemePreferenceChange("light")}
+              type="button"
+            >
+              Light
+            </button>
+            <button
+              aria-pressed={themePreference === "dark"}
+              className={themePreference === "dark" ? "activeSegment" : ""}
+              onClick={() => onThemePreferenceChange("dark")}
+              type="button"
+            >
+              Dark
+            </button>
+          </div>
+        </div>
+        <div className="settingsSection">
+          <h3>Microsoft Teams</h3>
+          <label className="settingsToggleRow" htmlFor="setting-auto-add-meetings">
+            <input id="setting-auto-add-meetings" type="checkbox" />
+            <span>Add SignalTuner to recurring Teams meetings</span>
+          </label>
+          <label className="settingsToggleRow" htmlFor="setting-post-activation-prompts">
+            <input id="setting-post-activation-prompts" type="checkbox" />
+            <span>Post activation prompts for participants without client data</span>
+          </label>
+          <label className="settingsToggleRow" htmlFor="setting-post-analysis-summary">
+            <input id="setting-post-analysis-summary" type="checkbox" />
+            <span>Post diagnostic summaries to meeting chat after full analysis</span>
+          </label>
+          <label className="settingsToggleRow" htmlFor="setting-post-service-incidents">
+            <input id="setting-post-service-incidents" type="checkbox" />
+            <span>Post active Microsoft Teams incident updates to meeting chat</span>
+          </label>
+          <label className="settingsToggleRow" htmlFor="setting-organizer-approval">
+            <input defaultChecked id="setting-organizer-approval" type="checkbox" />
+            <span>Require organizer approval before automated chat posts</span>
+          </label>
+          <button className="primaryButton settingsSaveButton" disabled type="button">
+            Save settings
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({
   analysis,
   apiBaseUrl,
   dashboard,
+  activePage,
   error,
   isLoading,
   onAnalyzeAll,
   onAnalyzeUser,
   onInvite,
+  onNavigate,
   onSignOut,
   onThemePreferenceChange,
   sessionToken,
@@ -2078,11 +2331,13 @@ function Dashboard({
   analysis: AnalysisResult | null;
   apiBaseUrl: string;
   dashboard: DashboardData;
+  activePage: InAppPage;
   error: string | null;
   isLoading: boolean;
   onAnalyzeAll: () => Promise<void>;
   onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
+  onNavigate: (page: InAppPage) => void;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
   sessionToken: string;
@@ -2090,6 +2345,7 @@ function Dashboard({
   themePreference: SignalTunerThemePreference;
 }) {
   const [accountOpen, setAccountOpen] = React.useState(false);
+  const accountMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [recentIncidentsOpen, setRecentIncidentsOpen] = React.useState(false);
   const [selectedIncident, setSelectedIncident] = React.useState<ServiceIncident | null>(null);
   const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(
@@ -2129,6 +2385,21 @@ function Dashboard({
   const expandedParticipantHasActiveAnalysis = Boolean(
     expandedParticipant && getParticipantTelemetry(analysis, expandedParticipant.userId)
   );
+
+  React.useEffect(() => {
+    if (!accountOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [accountOpen]);
 
   React.useEffect(() => {
     if (!selectedIncident) {
@@ -2213,7 +2484,7 @@ function Dashboard({
     <main className="pageShell dashboardShell">
       <header className="appHeader">
         <SignalTunerLogo className="appLogo" />
-        <div className="accountMenuWrap">
+        <div className="accountMenuWrap" ref={accountMenuRef}>
           <button
             aria-expanded={accountOpen}
             aria-haspopup="menu"
@@ -2233,33 +2504,39 @@ function Dashboard({
                 <strong>{user.displayName ?? user.email ?? "SignalTuner account"}</strong>
                 <span>{user.email}</span>
               </div>
-              <button role="menuitem" type="button" onClick={() => setAccountOpen(false)}>
+              <button
+                className={activePage === "dashboard" ? "activeMenuItem" : ""}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  onNavigate("dashboard");
+                  setAccountOpen(false);
+                }}
+              >
+                Dashboard
+              </button>
+              <button
+                className={activePage === "account" ? "activeMenuItem" : ""}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  onNavigate("account");
+                  setAccountOpen(false);
+                }}
+              >
                 Account
               </button>
-              <button role="menuitem" type="button" onClick={() => setAccountOpen(false)}>
+              <button
+                className={activePage === "settings" ? "activeMenuItem" : ""}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  onNavigate("settings");
+                  setAccountOpen(false);
+                }}
+              >
                 Settings
               </button>
-              <div className="themePreferenceControl compactThemeControl">
-                <strong>Appearance</strong>
-                <div className="segmentedControl" role="group" aria-label="SignalTuner appearance">
-                  <button
-                    aria-pressed={themePreference === "light"}
-                    className={themePreference === "light" ? "activeSegment" : ""}
-                    onClick={() => onThemePreferenceChange("light")}
-                    type="button"
-                  >
-                    Light
-                  </button>
-                  <button
-                    aria-pressed={themePreference === "dark"}
-                    className={themePreference === "dark" ? "activeSegment" : ""}
-                    onClick={() => onThemePreferenceChange("dark")}
-                    type="button"
-                  >
-                    Dark
-                  </button>
-                </div>
-              </div>
               <button role="menuitem" type="button" onClick={onSignOut}>
                 Sign out
               </button>
@@ -2270,7 +2547,13 @@ function Dashboard({
 
       {error && <section className="panel panelAlert">{error}</section>}
 
-      {subscriptionPrompt && (
+      {activePage === "account" && <AccountPage user={user} />}
+
+      {activePage === "settings" && (
+        <SettingsPage themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange} />
+      )}
+
+      {activePage === "dashboard" && subscriptionPrompt && (
         <section className="panel subscriptionPrompt">
           <h2>More credits required</h2>
           <p>
@@ -2283,6 +2566,8 @@ function Dashboard({
         </section>
       )}
 
+      {activePage === "dashboard" && (
+        <>
       <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
         <div className="serviceStatusCard">
           <img className="teamsMark" src={microsoftTeamsLogo} alt="Microsoft Teams" />
@@ -2518,6 +2803,8 @@ function Dashboard({
       {selectedIncident ? (
         <IncidentDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
       ) : null}
+        </>
+      )}
     </main>
   );
 }
@@ -2644,6 +2931,7 @@ export default function App() {
   const [activationCodeError, setActivationCodeError] = React.useState<string | null>(null);
   const [accountUser, setAccountUser] = React.useState<CurrentUser | null>(null);
   const [pendingProfileAuth, setPendingProfileAuth] = React.useState<PendingProfileAuth | null>(null);
+  const [activePage, setActivePage] = React.useState<InAppPage>("dashboard");
   const isMountedRef = React.useRef(true);
 
   const parseCreditError = React.useCallback((caught: unknown): boolean => {
@@ -2997,12 +3285,18 @@ export default function App() {
       return;
     }
 
+    const currentUser = mergeCurrentUser(dashboard.currentUser, accountUser);
+
+    if (!currentUser.clientIsActive && !isClientPromptDismissed) {
+      return;
+    }
+
     const intervalId = window.setInterval(() => {
       void refreshDashboard(dashboard.meetingSessionId, sessionToken);
     }, 10000);
 
     return () => window.clearInterval(intervalId);
-  }, [dashboard, refreshDashboard, sessionToken]);
+  }, [accountUser, dashboard, isClientPromptDismissed, refreshDashboard, sessionToken]);
 
   const signInWithTeams = React.useCallback(async () => {
     if (!apiBaseUrl) {
@@ -3175,6 +3469,29 @@ export default function App() {
     }
   }, [apiBaseUrl, dashboard, sessionToken]);
 
+  const refreshClientPromptStatus = React.useCallback(async () => {
+    if (!dashboard || !sessionToken) {
+      return;
+    }
+
+    setActivationCodeError(null);
+
+    try {
+      const refreshedDashboard = await refreshDashboard(dashboard.meetingSessionId, sessionToken);
+      const refreshedUser = mergeCurrentUser(refreshedDashboard.currentUser, accountUser);
+
+      if (!refreshedUser.clientIsActive && !refreshedUser.activationCode) {
+        const activationCode = await refreshActivationCode(sessionToken);
+
+        if (!activationCode) {
+          setActivationCodeError("Unable to load your activation code.");
+        }
+      }
+    } catch (caught) {
+      setActivationCodeError(caught instanceof Error ? caught.message : "Unable to refresh desktop telemetry status.");
+    }
+  }, [accountUser, dashboard, refreshActivationCode, refreshDashboard, sessionToken]);
+
   const signOut = React.useCallback(() => {
     window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
     window.localStorage.setItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY, "true");
@@ -3187,6 +3504,7 @@ export default function App() {
     setActivationCodeError(null);
     setAccountUser(null);
     setPendingProfileAuth(null);
+    setActivePage("dashboard");
   }, []);
 
   if (isConfigPage) {
@@ -3244,19 +3562,11 @@ export default function App() {
             activationCodeError={activationCodeError}
             isLoading={isLoading}
             user={currentUser}
-            onContinue={() => setIsClientPromptDismissed(true)}
-            onRefresh={async () => {
-              setActivationCodeError(null);
-              const refreshedDashboard = await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-
-              if (!mergeCurrentUser(refreshedDashboard.currentUser, accountUser).activationCode) {
-                const activationCode = await refreshActivationCode(sessionToken);
-
-                if (!activationCode) {
-                  setActivationCodeError("Unable to load your activation code.");
-                }
-              }
+            onContinue={() => {
+              setActivePage("dashboard");
+              setIsClientPromptDismissed(true);
             }}
+            onRefresh={refreshClientPromptStatus}
             onSignOut={signOut}
           />
         </main>
@@ -3265,12 +3575,14 @@ export default function App() {
         <Dashboard
           analysis={analysis}
           apiBaseUrl={apiBaseUrl}
+          activePage={activePage}
           dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
           onAnalyzeAll={analyzeAll}
           onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
+          onNavigate={setActivePage}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
           sessionToken={sessionToken}

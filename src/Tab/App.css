@@ -531,7 +531,7 @@ a {
   background: #182536;
 }
 
-.activationCodeBlock span {
+.activationCodeBlock > span {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 400;
@@ -543,6 +543,83 @@ a {
   font-size: 1.45rem;
   letter-spacing: 0.08em;
   overflow-wrap: anywhere;
+}
+
+.copyableCodeWrap {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.copyableCodeButton {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 40px;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+
+.copyableCodeButton:hover:not(:disabled),
+.copyableCodeButton:focus-visible {
+  border-color: var(--field-border);
+  background: var(--field);
+}
+
+.copyableCodeButton:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.copyableCodeButton strong {
+  min-width: 0;
+}
+
+.copyGlyph {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.copyGlyph::before,
+.copyGlyph::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 12px;
+  border: 1.6px solid currentColor;
+  border-radius: 2px;
+}
+
+.copyGlyph::before {
+  top: 2px;
+  left: 5px;
+}
+
+.copyGlyph::after {
+  top: 5px;
+  left: 2px;
+  background: var(--notice);
+}
+
+.copyStatus {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.copyStatus-copied {
+  color: var(--green);
+}
+
+.copyStatus-failed {
+  color: var(--red);
 }
 
 .activationCodeBlock p {
@@ -865,9 +942,80 @@ a:focus-visible {
   background: var(--notice);
 }
 
+.accountDropdown > button.activeMenuItem {
+  color: #FFFFFF;
+  background: var(--blue);
+}
+
 .compactThemeControl {
   gap: 8px;
   padding: 9px;
+}
+
+.accountPagePanel,
+.settingsPagePanel {
+  display: grid;
+  gap: 2px;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.settingsSection {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--notice) 62%, var(--panel));
+}
+
+.settingsSection h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.accountMetaSection {
+  background: var(--panel);
+}
+
+.accountActivationCode {
+  background: var(--notice);
+}
+
+.settingsSaveButton {
+  justify-self: start;
+}
+
+.settingsToggleRow {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.settingsToggleRow:first-of-type {
+  border-top: 0;
+}
+
+.settingsToggleRow input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--blue);
+}
+
+input:read-only {
+  color: var(--muted);
+  background: var(--notice);
 }
 
 .statusIncidentsPanel {
@@ -1890,7 +2038,8 @@ a:focus-visible {
 
   .topBar,
   .sectionTitleRow,
-  .accountPanel {
+  .accountPanel,
+  .settingsGrid {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
