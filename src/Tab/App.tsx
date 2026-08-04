@@ -547,6 +547,40 @@ function formatParticipantMeetingRole(role: string | null | undefined): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function getParticipantMeetingRoleRank(role: string | null | undefined): number {
+  const normalizedRole = role
+    ?.trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+
+  const roleRanks: Record<string, number> = {
+    organizer: 400,
+    coorganizer: 350,
+    presenter: 300,
+    attendee: 200,
+    participant: 100,
+  };
+
+  return normalizedRole ? roleRanks[normalizedRole] ?? 0 : 100;
+}
+
+function sortParticipantsByMeetingRole(participants: MeetingParticipant[]): MeetingParticipant[] {
+  return participants
+    .map((participant, index) => ({ participant, index }))
+    .sort((left, right) => {
+      const roleDifference =
+        getParticipantMeetingRoleRank(right.participant.meetingRole) -
+        getParticipantMeetingRoleRank(left.participant.meetingRole);
+
+      if (roleDifference !== 0) {
+        return roleDifference;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ participant }) => participant);
+}
+
 function getInitials(name: string | null | undefined, email: string | null | undefined): string {
   const source = name?.trim() || email?.trim() || "SignalTuner User";
   const parts = source
@@ -2347,15 +2381,15 @@ function Dashboard({
   const [accountOpen, setAccountOpen] = React.useState(false);
   const accountMenuRef = React.useRef<HTMLDivElement | null>(null);
   const [recentIncidentsOpen, setRecentIncidentsOpen] = React.useState(false);
+  const recentIncidentsRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIncident, setSelectedIncident] = React.useState<ServiceIncident | null>(null);
-  const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(
-    dashboard.participants[0]?.userId ?? null
-  );
+  const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(null);
   const [signalScoreTrends, setSignalScoreTrends] = React.useState<Record<number, SignalScoreTrendResponse>>({});
   const [signalScoreTrendLoadingId, setSignalScoreTrendLoadingId] = React.useState<number | null>(null);
   const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
   const user = dashboard.currentUser;
-  const activeParticipants = dashboard.participants.filter((participant) => participant.clientDataStatus === "active");
+  const participants = React.useMemo(() => sortParticipantsByMeetingRole(dashboard.participants), [dashboard.participants]);
+  const activeParticipants = participants.filter((participant) => participant.clientDataStatus === "active");
   const activeIncidents =
     dashboard.teamsServiceHealth.activeIncidents.length > 0
       ? dashboard.teamsServiceHealth.activeIncidents
@@ -2364,7 +2398,7 @@ function Dashboard({
   const teamsStatus =
     dashboard.teamsServiceHealth.activeIncidents.length > 0 ? normalizeTeamsServiceStatus(dashboard.teamsServiceHealth) : "activeIncident";
   const teamsStatusMeta = getTeamsStatusMeta(teamsStatus);
-  const goodParticipants = dashboard.participants.filter((participant) => getSignalTone(participant.signalScore) === "good").length;
+  const goodParticipants = participants.filter((participant) => getSignalTone(participant.signalScore) === "good").length;
   const aggregateScore =
     activeParticipants.length > 0
       ? Math.round(
@@ -2378,10 +2412,10 @@ function Dashboard({
       ? "Microsoft Teams is operational. Participant telemetry is summarized from active SignalTuner clients."
       : "Microsoft Teams is experiencing an active incident that may impact meeting quality.";
   const participantSummary =
-    activeParticipants.length === dashboard.participants.length
+    activeParticipants.length === participants.length
       ? "All participants with SignalTuner data are reporting into this meeting."
-      : `Participant connectivity is mixed. ${dashboard.participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
-  const expandedParticipant = dashboard.participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
+      : `Participant connectivity is mixed. ${participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
+  const expandedParticipant = participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
   const expandedParticipantHasActiveAnalysis = Boolean(
     expandedParticipant && getParticipantTelemetry(analysis, expandedParticipant.userId)
   );
@@ -2400,6 +2434,21 @@ function Dashboard({
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [accountOpen]);
+
+  React.useEffect(() => {
+    if (!recentIncidentsOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!recentIncidentsRef.current?.contains(event.target as Node)) {
+        setRecentIncidentsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [recentIncidentsOpen]);
 
   React.useEffect(() => {
     if (!selectedIncident) {
@@ -2601,7 +2650,7 @@ function Dashboard({
           ) : (
             <p className="emptyState">No active Microsoft Teams incidents are currently reported.</p>
           )}
-          <div className="semanticIncidentDropdown">
+          <div className="semanticIncidentDropdown" ref={recentIncidentsRef}>
             <button
               aria-controls="recent-incident-menu"
               aria-expanded={recentIncidentsOpen}
@@ -2685,7 +2734,7 @@ function Dashboard({
               </tr>
             </thead>
             <tbody>
-              {dashboard.participants.map((participant) => {
+              {participants.map((participant) => {
                 const hasData = participant.clientDataStatus === "active";
                 const isExpanded = expandedParticipantId === participant.userId;
                 const telemetry = getParticipantTelemetry(analysis, participant.userId);
@@ -2789,7 +2838,7 @@ function Dashboard({
           <div className="healthBadges">
             <span className={`semanticBadge ${teamsStatusMeta.className}`}>Teams: {teamsStatusMeta.label}</span>
             <span className="semanticBadge statusOperational">
-              {goodParticipants} of {dashboard.participants.length} Participants Good
+              {goodParticipants} of {participants.length} Participants Good
             </span>
           </div>
         </div>
