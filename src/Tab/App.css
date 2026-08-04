@@ -987,6 +987,17 @@ a:focus-visible {
   background: var(--notice);
 }
 
+.creditControl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.creditIncrementButton {
+  min-width: 52px;
+}
+
 .settingsSaveButton {
   justify-self: start;
 }
@@ -1637,6 +1648,20 @@ input:read-only {
 
 :root[data-teams-theme="dark"] .compactAction {
   color: #8AB4E1;
+}
+
+.analysisSessionStatus {
+  display: grid;
+  gap: 2px;
+  min-width: 96px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.analysisSessionStatus time {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .telemetryDetailRow > td {

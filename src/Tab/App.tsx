@@ -124,6 +124,7 @@ type MeetingParticipant = {
   liveTelemetry: TelemetryRecord | null;
   clientDataStatus: ClientDataStatus;
   clientIsActive: boolean;
+  analysisSessionExpiresAt: string | null;
 };
 
 type DashboardData = {
@@ -951,7 +952,35 @@ function getParticipantTelemetry(analysis: AnalysisResult | null, participantId:
 }
 
 function getParticipantLiveTelemetry(participant: MeetingParticipant): TelemetryRecord | null {
-  return participant.clientIsActive ? participant.liveTelemetry : null;
+  return participant.liveTelemetry;
+}
+
+function parseUtcTimestampMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalizedValue = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`;
+  const timestampMs = Date.parse(normalizedValue);
+  return Number.isNaN(timestampMs) ? null : timestampMs;
+}
+
+function getAnalysisRemainingMs(participant: MeetingParticipant, nowMs: number): number {
+  const expiresAtMs = parseUtcTimestampMs(participant.analysisSessionExpiresAt);
+  return expiresAtMs ? Math.max(0, expiresAtMs - nowMs) : 0;
+}
+
+function formatAnalysisCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function getParticipantIssues(analysis: AnalysisResult | null, participantId: number): Issue[] {
@@ -1099,7 +1128,7 @@ function mergeCurrentUser(primary: CurrentUser, fallback: CurrentUser | null): C
     displayName: primary.displayName ?? fallback.displayName,
     firstName: primary.firstName ?? fallback.firstName,
     lastName: primary.lastName ?? fallback.lastName,
-    credits: primary.credits || fallback.credits,
+    credits: Number.isFinite(primary.credits) ? primary.credits : fallback.credits,
     subscriptionPlan: primary.subscriptionPlan ?? fallback.subscriptionPlan,
     activationCode: primary.activationCode ?? fallback.activationCode,
     clientIsActive: primary.clientIsActive || fallback.clientIsActive,
@@ -1180,6 +1209,7 @@ function normalizeMeetingParticipant(value: unknown): MeetingParticipant {
     liveTelemetry: asTelemetryRecord(record.liveTelemetry ?? record.LiveTelemetry ?? record.telemetry ?? record.Telemetry),
     clientDataStatus: clientDataStatus as ClientDataStatus,
     clientIsActive: readBoolean(record, clientDataStatus === "active", "clientIsActive", "ClientIsActive"),
+    analysisSessionExpiresAt: readString(record, "analysisSessionExpiresAt", "AnalysisSessionExpiresAt", "analysis_session_expires_at"),
   };
 }
 
@@ -2196,7 +2226,15 @@ function SignalScoreTrendChart({
   );
 }
 
-function AccountPage({ user }: { user: CurrentUser }) {
+function AccountPage({
+  isAddingTestingCredit,
+  onAddTestingCredit,
+  user,
+}: {
+  isAddingTestingCredit: boolean;
+  onAddTestingCredit: () => Promise<void>;
+  user: CurrentUser;
+}) {
   const [displayName, setDisplayName] = React.useState(user.displayName ?? "");
   const [email, setEmail] = React.useState(user.email ?? "");
   const [newPassword, setNewPassword] = React.useState("");
@@ -2271,6 +2309,20 @@ function AccountPage({ user }: { user: CurrentUser }) {
           <div className="fieldGroup">
             <label htmlFor="account-subscription">Subscription</label>
             <input id="account-subscription" readOnly type="text" value={subscriptionPlan} />
+          </div>
+          <div className="fieldGroup">
+            <label htmlFor="account-credits">Credits</label>
+            <div className="creditControl">
+              <input id="account-credits" readOnly type="text" value={String(user.credits)} />
+              <button
+                className="secondaryButton creditIncrementButton"
+                disabled={isAddingTestingCredit}
+                onClick={() => void onAddTestingCredit()}
+                type="button"
+              >
+                +1
+              </button>
+            </div>
           </div>
         </aside>
       </div>
@@ -2352,6 +2404,8 @@ function Dashboard({
   activePage,
   error,
   isLoading,
+  isAddingTestingCredit,
+  onAddTestingCredit,
   onAnalyzeAll,
   onAnalyzeUser,
   onInvite,
@@ -2368,6 +2422,8 @@ function Dashboard({
   activePage: InAppPage;
   error: string | null;
   isLoading: boolean;
+  isAddingTestingCredit: boolean;
+  onAddTestingCredit: () => Promise<void>;
   onAnalyzeAll: () => Promise<void>;
   onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
@@ -2387,6 +2443,7 @@ function Dashboard({
   const [signalScoreTrends, setSignalScoreTrends] = React.useState<Record<number, SignalScoreTrendResponse>>({});
   const [signalScoreTrendLoadingId, setSignalScoreTrendLoadingId] = React.useState<number | null>(null);
   const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
+  const [nowMs, setNowMs] = React.useState(Date.now());
   const user = dashboard.currentUser;
   const participants = React.useMemo(() => sortParticipantsByMeetingRole(dashboard.participants), [dashboard.participants]);
   const activeParticipants = participants.filter((participant) => participant.clientDataStatus === "active");
@@ -2417,8 +2474,19 @@ function Dashboard({
       : `Participant connectivity is mixed. ${participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
   const expandedParticipant = participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
   const expandedParticipantHasActiveAnalysis = Boolean(
-    expandedParticipant && getParticipantTelemetry(analysis, expandedParticipant.userId)
+    expandedParticipant &&
+      (getParticipantTelemetry(analysis, expandedParticipant.userId) ||
+        getAnalysisRemainingMs(expandedParticipant, nowMs) > 0)
   );
+
+  React.useEffect(() => {
+    if (!participants.some((participant) => getAnalysisRemainingMs(participant, Date.now()) > 0)) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [participants]);
 
   React.useEffect(() => {
     if (!accountOpen) {
@@ -2596,7 +2664,13 @@ function Dashboard({
 
       {error && <section className="panel panelAlert">{error}</section>}
 
-      {activePage === "account" && <AccountPage user={user} />}
+      {activePage === "account" && (
+        <AccountPage
+          isAddingTestingCredit={isAddingTestingCredit}
+          onAddTestingCredit={onAddTestingCredit}
+          user={user}
+        />
+      )}
 
       {activePage === "settings" && (
         <SettingsPage themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange} />
@@ -2735,9 +2809,11 @@ function Dashboard({
             </thead>
             <tbody>
               {participants.map((participant) => {
+                const analysisRemainingMs = getAnalysisRemainingMs(participant, nowMs);
+                const hasActiveAnalysisSession = analysisRemainingMs > 0;
                 const hasData = participant.clientDataStatus === "active";
                 const isExpanded = expandedParticipantId === participant.userId;
-                const telemetry = getParticipantTelemetry(analysis, participant.userId);
+                const telemetry = getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant);
                 const issues = getParticipantIssues(analysis, participant.userId);
                 const tone = getSignalTone(participant.signalScore);
                 const analysisCoversParticipant = Boolean(telemetry);
@@ -2790,7 +2866,12 @@ function Dashboard({
                         </span>
                       </td>
                       <td>
-                        {hasData ? (
+                        {hasActiveAnalysisSession ? (
+                          <span className="analysisSessionStatus">
+                            <span>Analysis in progress</span>
+                            <time>{formatAnalysisCountdown(analysisRemainingMs)}</time>
+                          </span>
+                        ) : hasData ? (
                           <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => onAnalyzeUser(participant.userId)} type="button">
                             Analyze
                           </button>
@@ -2804,9 +2885,8 @@ function Dashboard({
                     {isExpanded && (
                       <tr className="telemetryDetailRow">
                         <ParticipantTelemetryDetail
-                          hasData={hasData}
+                          hasData={hasData || hasActiveAnalysisSession}
                           issues={issues}
-                          onAnalyze={() => onAnalyzeUser(participant.userId)}
                           signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
                           signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
                           signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingId === participant.userId}
@@ -2861,7 +2941,6 @@ function Dashboard({
 function ParticipantTelemetryDetail({
   hasData,
   issues,
-  onAnalyze,
   signalScoreTrend,
   signalScoreTrendError,
   signalScoreTrendLoading,
@@ -2869,13 +2948,12 @@ function ParticipantTelemetryDetail({
 }: {
   hasData: boolean;
   issues: Issue[];
-  onAnalyze: () => Promise<void>;
   signalScoreTrend: SignalScoreTrendResponse | null;
   signalScoreTrendError: string | null;
   signalScoreTrendLoading: boolean;
   telemetry: TelemetryRecord | null;
 }) {
-  const recommendation = issues[0]?.recommendation ?? (hasData ? "Run analysis to populate participant telemetry." : "Prompt the participant to activate the local client.");
+  const recommendation = issues[0]?.recommendation ?? (hasData ? "Analysis session is active for this participant." : "Prompt the participant to activate the local client.");
   const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
   const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
   const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
@@ -2947,13 +3025,7 @@ function ParticipantTelemetryDetail({
           </div>
         </td>
       ))}
-      <td className="telemetryDetailActionCell">
-        {!telemetry && hasData ? (
-          <button className="secondaryButton compactAction" onClick={() => void onAnalyze()} type="button">
-            Load telemetry
-          </button>
-        ) : null}
-      </td>
+      <td className="telemetryDetailActionCell"></td>
     </>
   );
 }
@@ -2972,6 +3044,7 @@ export default function App() {
   const [subscriptionPrompt, setSubscriptionPrompt] = React.useState<SubscriptionPrompt | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isAddingTestingCredit, setIsAddingTestingCredit] = React.useState(false);
   const [busyState, setBusyState] = React.useState<AuthBusyState>("idle");
   const [isRunningInTeams, setIsRunningInTeams] = React.useState(false);
   const [teamsTheme, setTeamsTheme] = React.useState<TeamsTheme>("default");
@@ -3049,6 +3122,28 @@ export default function App() {
         ? {
             ...current,
             activationCode,
+          }
+        : current
+    );
+  }, []);
+
+  const mergeCredits = React.useCallback((credits: number) => {
+    setAccountUser((current) =>
+      current
+        ? {
+            ...current,
+            credits,
+          }
+        : current
+    );
+    setDashboard((current) =>
+      current
+        ? {
+            ...current,
+            currentUser: {
+              ...current.currentUser,
+              credits,
+            },
           }
         : current
     );
@@ -3460,6 +3555,7 @@ export default function App() {
           body: JSON.stringify({ meetingSessionId: dashboard.meetingSessionId, targetUserId }),
         });
         setAnalysis({ mode: "user", data });
+        mergeCredits(data.remainingCredits);
         await refreshDashboard(dashboard.meetingSessionId, sessionToken);
       } catch (caught) {
         if (!parseCreditError(caught)) {
@@ -3469,7 +3565,7 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [apiBaseUrl, dashboard, parseCreditError, refreshDashboard, sessionToken]
+    [apiBaseUrl, dashboard, mergeCredits, parseCreditError, refreshDashboard, sessionToken]
   );
 
   const analyzeAll = React.useCallback(async () => {
@@ -3488,6 +3584,7 @@ export default function App() {
         body: JSON.stringify({ meetingSessionId: dashboard.meetingSessionId }),
       });
       setAnalysis({ mode: "full", data });
+      mergeCredits(data.remainingCredits);
       await refreshDashboard(dashboard.meetingSessionId, sessionToken);
     } catch (caught) {
       if (!parseCreditError(caught)) {
@@ -3496,7 +3593,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [apiBaseUrl, dashboard, parseCreditError, refreshDashboard, sessionToken]);
+  }, [apiBaseUrl, dashboard, mergeCredits, parseCreditError, refreshDashboard, sessionToken]);
 
   const inviteParticipants = React.useCallback(async () => {
     if (!dashboard || !sessionToken) {
@@ -3540,6 +3637,34 @@ export default function App() {
       setActivationCodeError(caught instanceof Error ? caught.message : "Unable to refresh desktop telemetry status.");
     }
   }, [accountUser, dashboard, refreshActivationCode, refreshDashboard, sessionToken]);
+
+  const addTestingCredit = React.useCallback(async () => {
+    if (!sessionToken) {
+      return;
+    }
+
+    setIsAddingTestingCredit(true);
+    setError(null);
+
+    try {
+      const response = asRecord(
+        await fetchJson<unknown>(`${apiBaseUrl}/api/User/credits/testing/add-one`, {
+          method: "POST",
+          headers: buildAuthHeaders(sessionToken),
+        })
+      );
+      const credits = readNumber(response, mergeCurrentUser(dashboard?.currentUser ?? normalizeCurrentUser(null), accountUser).credits, "credits", "Credits", "userCredits", "UserCredits");
+      mergeCredits(credits);
+      await refreshAccountInfo(sessionToken);
+      if (dashboard) {
+        await refreshDashboard(dashboard.meetingSessionId, sessionToken);
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setIsAddingTestingCredit(false);
+    }
+  }, [accountUser, apiBaseUrl, dashboard, mergeCredits, refreshAccountInfo, refreshDashboard, sessionToken]);
 
   const signOut = React.useCallback(() => {
     window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
@@ -3628,6 +3753,8 @@ export default function App() {
           dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
+          isAddingTestingCredit={isAddingTestingCredit}
+          onAddTestingCredit={addTestingCredit}
           onAnalyzeAll={analyzeAll}
           onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
