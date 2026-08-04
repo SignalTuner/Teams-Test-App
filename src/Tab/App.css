@@ -166,15 +166,15 @@ a {
   height: auto;
 }
 
-.logoSwapDark {
+.logoSwap .logoSwapDark {
   display: none;
 }
 
-:root[data-teams-theme="dark"] .logoSwapLight {
+:root[data-teams-theme="dark"] .logoSwap .logoSwapLight {
   display: none;
 }
 
-:root[data-teams-theme="dark"] .logoSwapDark {
+:root[data-teams-theme="dark"] .logoSwap .logoSwapDark {
   display: block;
 }
 
