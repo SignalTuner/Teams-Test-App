@@ -440,9 +440,18 @@ a {
 
 .forgotLink {
   justify-self: start;
+  border: 0;
+  padding: 0;
   color: var(--blue);
+  background: transparent;
   font-weight: 400;
   text-decoration: none;
+  cursor: pointer;
+}
+
+.forgotLink:disabled {
+  cursor: progress;
+  opacity: 0.58;
 }
 
 .fullWidthButton {
@@ -1003,7 +1012,16 @@ a:focus-visible {
 }
 
 .settingsSaveButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   justify-self: start;
+}
+
+.settingsStatus {
+  margin: 0;
+  color: var(--green);
+  line-height: 1.4;
 }
 
 .settingsToggleRow {

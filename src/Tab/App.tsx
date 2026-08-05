@@ -232,9 +232,18 @@ const EXAMPLE_ACTIVE_INCIDENTS: ServiceIncident[] = [
   },
 ];
 
-type AuthPageMode = "login" | "create-account";
+type AuthPageMode = "login" | "create-account" | "forgot-password";
 type InAppPage = "dashboard" | "account" | "settings";
-type AuthBusyState = "idle" | "initializing-teams" | "checking-session" | "auto-sso" | "teams-sso" | "email-login" | "email-register" | "success";
+type AuthBusyState =
+  | "idle"
+  | "initializing-teams"
+  | "checking-session"
+  | "auto-sso"
+  | "teams-sso"
+  | "email-login"
+  | "email-register"
+  | "password-reset"
+  | "success";
 type TeamsTheme = "default" | "dark" | "contrast";
 type SignalTunerThemePreference = "light" | "dark";
 type JsonRecord = Record<string, unknown>;
@@ -243,7 +252,7 @@ const SIGNALTUNER_SESSION_TOKEN_KEY = "signaltunerSessionToken";
 const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
 const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
-const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters.";
+const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters, including uppercase, lowercase, number, and symbol.";
 const CLIENT_PROMPT_REFRESH_INTERVAL_MS = 20000;
 const CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS = 2000;
 const CLIENT_PROMPT_COPIED_REFRESH_DURATION_MS = 60000;
@@ -283,7 +292,11 @@ function restoreReturnUrl(returnUrl: string): void {
 
 function getAuthPageMode(): AuthPageMode {
   const path = window.location.pathname.toLowerCase();
-  return path.includes("create-account") ? "create-account" : "login";
+  if (path.includes("create-account")) {
+    return "create-account";
+  }
+
+  return path.includes("forgot-password") ? "forgot-password" : "login";
 }
 
 function sanitizeAuthError(caught: unknown, fallback: string): string {
@@ -306,6 +319,30 @@ function sanitizeAuthError(caught: unknown, fallback: string): string {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function validatePassword(password: string): string | undefined {
+  if (password.length < 8) {
+    return "Password must be at least 8 characters long.";
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter.";
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return "Password must contain at least one lowercase letter.";
+  }
+
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one number.";
+  }
+
+  if (!/[~`!@#$%^&*()\-_+={[}\]|:;"'<,>.?/]/.test(password)) {
+    return "Password must contain at least one special symbol.";
+  }
+
+  return undefined;
 }
 
 function mapTeamsTheme(theme: string | undefined): TeamsTheme {
@@ -425,6 +462,45 @@ async function signInWithEmail(apiBaseUrl: string, email: string, password: stri
     headers: buildAuthHeaders(null),
     body: JSON.stringify({ email, password }),
   });
+}
+
+async function requestPasswordResetEmail(apiBaseUrl: string, email: string): Promise<string> {
+  const response = await fetch(`${apiBaseUrl}/api/User/RequestPasswordReset`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ email: email.trim() }),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(text || "Failed to send password reset email.");
+  }
+
+  return text || "Password reset email sent successfully.";
+}
+
+async function updateAccountPassword(apiBaseUrl: string, token: string, userId: number, newPassword: string): Promise<string> {
+  const formData = new FormData();
+  formData.append("newPassword", newPassword);
+
+  const response = await fetch(`${apiBaseUrl}/api/User/UpdatePassword/${userId}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(text || "Failed to update password.");
+  }
+
+  return text || "Password updated successfully.";
 }
 
 async function createAccountWithEmail(
@@ -1564,6 +1640,7 @@ function LoginPage({
   meetingContext,
   onCreateAccount,
   onEmailSignIn,
+  onForgotPassword,
   onTeamsSignIn,
 }: {
   error: string | null;
@@ -1572,6 +1649,7 @@ function LoginPage({
   meetingContext: TeamsMeetingContext | null;
   onCreateAccount: () => void;
   onEmailSignIn: (email: string, password: string) => Promise<void>;
+  onForgotPassword: () => void;
   onTeamsSignIn: () => Promise<void>;
 }) {
   const [email, setEmail] = React.useState("");
@@ -1660,9 +1738,9 @@ function LoginPage({
           placeholder="Enter your password"
           value={password}
         />
-        <a className="forgotLink" href="https://signaltuner.com/reset-password">
+        <button className="forgotLink" disabled={isBusy} onClick={onForgotPassword} type="button">
           Forgot password?
-        </a>
+        </button>
         <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
           {busyState === "email-login" ? <Spinner /> : null}
           <span>Sign in</span>
@@ -1674,6 +1752,90 @@ function LoginPage({
           Create account
         </button>
       </div>
+    </AuthLayout>
+  );
+}
+
+function ForgotPasswordPage({
+  busyState,
+  error,
+  onRequestPasswordReset,
+  onSignIn,
+}: {
+  busyState: AuthBusyState;
+  error: string | null;
+  onRequestPasswordReset: (email: string) => Promise<boolean>;
+  onSignIn: () => void;
+}) {
+  const [email, setEmail] = React.useState("");
+  const [fieldErrors, setFieldErrors] = React.useState<{ email?: string }>({});
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const emailRef = React.useRef<HTMLInputElement | null>(null);
+  const isBusy = busyState !== "idle";
+
+  const submitResetRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSuccessMessage(null);
+
+    const nextErrors = {
+      email: isValidEmail(email) ? undefined : "Enter a valid email address.",
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.email) {
+      emailRef.current?.focus();
+      return;
+    }
+
+    const wasSent = await onRequestPasswordReset(email);
+
+    if (wasSent) {
+      setEmail("");
+      setSuccessMessage("If that email is registered, a password reset email has been sent.");
+    }
+  };
+
+  return (
+    <AuthLayout>
+      <div className="authHeader">
+        <h1 id="auth-title">Reset password</h1>
+        <p>Enter your account email to receive a reset link.</p>
+      </div>
+      <AuthErrorAlert message={error} />
+      {successMessage && (
+        <p className="authNotice" role="status" aria-live="polite">
+          {successMessage}
+        </p>
+      )}
+      <form className="authForm" aria-busy={busyState === "password-reset"} onSubmit={(event) => void submitResetRequest(event)}>
+        <div className="fieldGroup">
+          <label htmlFor="forgot-password-email">Email</label>
+          <input
+            aria-describedby={fieldErrors.email ? "forgot-password-email-error" : undefined}
+            aria-invalid={Boolean(fieldErrors.email)}
+            autoComplete="email"
+            id="forgot-password-email"
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@company.com"
+            ref={emailRef}
+            type="email"
+            value={email}
+          />
+          {fieldErrors.email && (
+            <p className="fieldError" id="forgot-password-email-error">
+              {fieldErrors.email}
+            </p>
+          )}
+        </div>
+        <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
+          {busyState === "password-reset" ? <Spinner /> : null}
+          <span>Send reset email</span>
+        </button>
+      </form>
+      <button className="secondaryButton fullWidthButton" disabled={isBusy} onClick={onSignIn} type="button">
+        Back to sign in
+      </button>
     </AuthLayout>
   );
 }
@@ -1721,7 +1883,7 @@ function CreateAccountPage({
       firstName: firstName.trim() ? undefined : "Enter your first name.",
       lastName: lastName.trim() ? undefined : "Enter your last name.",
       email: isValidEmail(email) ? undefined : "Enter a valid email address.",
-      password: password.length >= 8 ? undefined : PASSWORD_REQUIREMENT_TEXT,
+      password: validatePassword(password),
       confirmPassword: password === confirmPassword ? undefined : "Passwords must match.",
       terms: termsAccepted ? undefined : "Accept the terms to create an account.",
     };
@@ -2254,10 +2416,12 @@ function SignalScoreTrendChart({
 
 function AccountPage({
   isAddingTestingCredit,
+  onUpdatePassword,
   onAddTestingCredit,
   user,
 }: {
   isAddingTestingCredit: boolean;
+  onUpdatePassword: (newPassword: string) => Promise<string>;
   onAddTestingCredit: () => Promise<void>;
   user: CurrentUser;
 }) {
@@ -2265,6 +2429,9 @@ function AccountPage({
   const [email, setEmail] = React.useState(user.email ?? "");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [passwordMessage, setPasswordMessage] = React.useState<string | null>(null);
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
   const subscriptionPlan = user.subscriptionPlan?.trim() || "Free";
   const activationCode = user.activationCode?.trim() || "Not available";
 
@@ -2272,6 +2439,37 @@ function AccountPage({
     setDisplayName(user.displayName ?? "");
     setEmail(user.email ?? "");
   }, [user.displayName, user.email]);
+
+  const submitPasswordUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPasswordMessage(null);
+
+    const validationError = validatePassword(newPassword);
+
+    if (validationError) {
+      setPasswordError(validationError);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords must match.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    setPasswordError(null);
+
+    try {
+      const message = await onUpdatePassword(newPassword);
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage(message);
+    } catch (caught) {
+      setPasswordError(caught instanceof Error ? caught.message : "Failed to update password.");
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   return (
     <section className="panel accountPagePanel">
@@ -2281,7 +2479,7 @@ function AccountPage({
         </div>
       </div>
       <div className="settingsGrid">
-        <form className="settingsSection" aria-label="Account profile">
+        <form className="settingsSection" aria-label="Account profile" onSubmit={(event) => void submitPasswordUpdate(event)}>
           <div className="fieldGroup">
             <label htmlFor="account-display-name">Display name</label>
             <input
@@ -2304,6 +2502,8 @@ function AccountPage({
           </div>
           <div className="splitFields">
             <PasswordField
+              error={passwordError ?? undefined}
+              helpText={PASSWORD_REQUIREMENT_TEXT}
               id="account-new-password"
               label="New password"
               onChange={setNewPassword}
@@ -2319,8 +2519,14 @@ function AccountPage({
               value={confirmPassword}
             />
           </div>
-          <button className="primaryButton settingsSaveButton" disabled type="button">
-            Save account changes
+          {passwordMessage && (
+            <p className="settingsStatus" role="status" aria-live="polite">
+              {passwordMessage}
+            </p>
+          )}
+          <button className="primaryButton settingsSaveButton" disabled={isUpdatingPassword} type="submit">
+            {isUpdatingPassword ? <Spinner /> : null}
+            <span>Update password</span>
           </button>
         </form>
         <aside className="settingsSection accountMetaSection">
@@ -2438,6 +2644,7 @@ function Dashboard({
   onNavigate,
   onSignOut,
   onThemePreferenceChange,
+  onUpdatePassword,
   sessionToken,
   subscriptionPrompt,
   themePreference,
@@ -2456,6 +2663,7 @@ function Dashboard({
   onNavigate: (page: InAppPage) => void;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
+  onUpdatePassword: (newPassword: string) => Promise<string>;
   sessionToken: string;
   subscriptionPrompt: SubscriptionPrompt | null;
   themePreference: SignalTunerThemePreference;
@@ -2694,6 +2902,7 @@ function Dashboard({
         <AccountPage
           isAddingTestingCredit={isAddingTestingCredit}
           onAddTestingCredit={onAddTestingCredit}
+          onUpdatePassword={onUpdatePassword}
           user={user}
         />
       )}
@@ -3544,6 +3753,31 @@ export default function App() {
     [apiBaseUrl, completeAuth]
   );
 
+  const requestPasswordReset = React.useCallback(
+    async (email: string): Promise<boolean> => {
+      if (!apiBaseUrl) {
+        setError("SignalTuner is temporarily unavailable. Please try again.");
+        return false;
+      }
+
+      setIsLoading(true);
+      setBusyState("password-reset");
+      setError(null);
+
+      try {
+        await requestPasswordResetEmail(apiBaseUrl, email);
+        return true;
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Failed to send password reset email.");
+        return false;
+      } finally {
+        setIsLoading(false);
+        setBusyState("idle");
+      }
+    },
+    [apiBaseUrl]
+  );
+
   const submitProfile = React.useCallback(
     async (firstName: string, lastName: string) => {
       if (!apiBaseUrl || !pendingProfileAuth) {
@@ -3697,6 +3931,20 @@ export default function App() {
     }
   }, [accountUser, apiBaseUrl, dashboard, mergeCredits, refreshAccountInfo, refreshDashboard, sessionToken]);
 
+  const submitAccountPasswordUpdate = React.useCallback(
+    async (newPassword: string): Promise<string> => {
+      const currentUser = mergeCurrentUser(dashboard?.currentUser ?? normalizeCurrentUser(null), accountUser);
+
+      if (!apiBaseUrl || !sessionToken || !currentUser.userId) {
+        throw new Error("SignalTuner is temporarily unavailable. Please try again.");
+      }
+
+      setError(null);
+      return updateAccountPassword(apiBaseUrl, sessionToken, currentUser.userId, newPassword);
+    },
+    [accountUser, apiBaseUrl, dashboard, sessionToken]
+  );
+
   const signOut = React.useCallback(() => {
     window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
     window.localStorage.setItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY, "true");
@@ -3750,6 +3998,17 @@ export default function App() {
       );
     }
 
+    if (authPageMode === "forgot-password") {
+      return (
+        <ForgotPasswordPage
+          busyState={busyState}
+          error={error}
+          onRequestPasswordReset={requestPasswordReset}
+          onSignIn={() => navigateAuth("login", returnUrl)}
+        />
+      );
+    }
+
     return (
       <LoginPage
         busyState={busyState}
@@ -3758,6 +4017,7 @@ export default function App() {
         meetingContext={meetingContext}
         onCreateAccount={() => navigateAuth("create-account", returnUrl)}
         onEmailSignIn={emailSignIn}
+        onForgotPassword={() => navigateAuth("forgot-password", returnUrl)}
         onTeamsSignIn={signInWithTeams}
       />
     );
@@ -3800,6 +4060,7 @@ export default function App() {
           onNavigate={setActivePage}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
+          onUpdatePassword={submitAccountPasswordUpdate}
           sessionToken={sessionToken}
           subscriptionPrompt={subscriptionPrompt}
           themePreference={themePreference}
