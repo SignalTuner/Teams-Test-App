@@ -1430,7 +1430,7 @@ input:read-only {
 .participantsPanel {
   --expand-column-width: 42px;
   --participant-column-width: 30%;
-  --score-column-width: 72px;
+  --score-column-width: 96px;
   --signal-column-width: 142px;
   --signal-column-padding: 12px;
   --actions-column-width: 108px;
@@ -1555,6 +1555,116 @@ input:read-only {
 
 .expandButton:hover {
   background: var(--notice);
+}
+
+.scoreCell {
+  text-align: center;
+}
+
+.compactSignalScoreDisplay {
+  width: 72px;
+  min-height: 64px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1px;
+}
+
+.compactSignalScoreMeter {
+  width: 58px;
+  height: 42px;
+  display: block;
+  overflow: visible;
+}
+
+.compactSignalScoreOuter,
+.compactSignalScoreTrack,
+.compactSignalScoreArc {
+  fill: none;
+}
+
+.compactSignalScoreOuter {
+  stroke: #DCDFE3;
+  stroke-width: 6;
+  stroke-miterlimit: 10;
+  stroke-dasharray: 0.5 13.78;
+  transform: translate(-11px, -10px);
+}
+
+.compactSignalScoreTrack {
+  stroke: #F4F4F4;
+  stroke-width: 17;
+}
+
+.compactSignalScoreArc {
+  stroke-width: 17;
+  stroke-linecap: round;
+}
+
+.compactSignalScoreValue {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  color: currentColor;
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1;
+  transform: translateX(-3px);
+}
+
+.compactSignalScoreValue span:last-child {
+  margin-left: 1px;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.compactSignalScoreStatus {
+  max-width: 72px;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  transform: translateX(-3px);
+  white-space: nowrap;
+}
+
+.compactSignalScore-excellent {
+  color: #3BB537;
+}
+
+.compactSignalScore-fair {
+  color: #F9AE00;
+}
+
+.compactSignalScore-poor {
+  color: #FC6F20;
+}
+
+.compactSignalScore-critical {
+  color: #EC2F3E;
+}
+
+.compactSignalScore-offline {
+  color: var(--muted);
+}
+
+.compactSignalScore-unknown {
+  color: #6B96C1;
+}
+
+:root[data-teams-theme="dark"] .compactSignalScoreTrack {
+  stroke: #344053;
+}
+
+:root[data-teams-theme="dark"] .compactSignalScoreOuter {
+  stroke: #536075;
+}
+
+:root[data-teams-theme="contrast"] .compactSignalScoreTrack,
+:root[data-teams-theme="contrast"] .compactSignalScoreOuter {
+  stroke: #FFFFFF;
 }
 
 .scoreValue {

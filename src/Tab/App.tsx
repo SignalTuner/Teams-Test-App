@@ -24,6 +24,7 @@ import workspaceWifiStrengthIcon from "./assets/workspace-wifi-strength-icon.svg
 type AuthProvider = "teams_sso" | "google" | "github" | "email_magic_code";
 type ClientDataStatus = "active" | "inactive" | "no_data";
 type AnalysisStatus = "Excellent" | "Fair" | "Poor" | "Critical" | "Offline" | "No data" | string;
+type SignalDisplayStatus = "Excellent" | "Fair" | "Poor" | "Critical" | "Offline" | "Unknown";
 type TeamsServiceStatus = "operational" | "activeIncident" | "outage";
 
 type CurrentUser = {
@@ -118,6 +119,7 @@ type MeetingParticipant = {
   joinedAt: string;
   lastSeenAt: string;
   signalScore: number | null;
+  overallStatus: AnalysisStatus | null;
   deviceStatus: AnalysisStatus | null;
   workspaceStatus: AnalysisStatus | null;
   networkStatus: AnalysisStatus | null;
@@ -725,6 +727,49 @@ function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: 
   return "Critical";
 }
 
+function getSignalOverallStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): SignalDisplayStatus {
+  const normalizedStatus = status?.trim().toLowerCase();
+
+  if (normalizedStatus === "excellent") {
+    return "Excellent";
+  }
+
+  if (normalizedStatus === "fair") {
+    return "Fair";
+  }
+
+  if (normalizedStatus === "poor") {
+    return "Poor";
+  }
+
+  if (normalizedStatus === "critical") {
+    return "Critical";
+  }
+
+  if (normalizedStatus === "offline") {
+    return "Offline";
+  }
+
+  return getSignalStatusLabel(null, score);
+}
+
+function getSignalStatusColor(status: SignalDisplayStatus): string {
+  switch (status) {
+    case "Excellent":
+      return "#3BB537";
+    case "Fair":
+      return "#F9AE00";
+    case "Poor":
+      return "#FC6F20";
+    case "Critical":
+      return "#EC2F3E";
+    case "Offline":
+      return "#61708A";
+    default:
+      return "#6B96C1";
+  }
+}
+
 function normalizeTeamsServiceStatus(health: TeamsServiceHealth): TeamsServiceStatus {
   const status = String(health.currentStatus ?? "").toLowerCase();
   const hasActiveIncidents = health.activeIncidents.length > 0 || health.unresolvedIncidents.length > 0;
@@ -1279,6 +1324,7 @@ function normalizeMeetingParticipant(value: unknown): MeetingParticipant {
     joinedAt: readString(record, "joinedAt", "JoinedAt") ?? "",
     lastSeenAt: readString(record, "lastSeenAt", "LastSeenAt") ?? "",
     signalScore: readNumber(record, Number.NaN, "signalScore", "SignalScore"),
+    overallStatus: readString(record, "overallStatus", "OverallStatus", "signalOverallStatus", "SignalOverallStatus"),
     deviceStatus: readString(record, "deviceStatus", "DeviceStatus", "signalSystemStatus", "SignalSystemStatus"),
     workspaceStatus: readString(record, "workspaceStatus", "WorkspaceStatus", "signalWifiStatus", "SignalWifiStatus"),
     networkStatus: readString(record, "networkStatus", "NetworkStatus", "signalBandwidthStatus", "SignalBandwidthStatus"),
@@ -2327,6 +2373,64 @@ function IncidentDetailModal({
   );
 }
 
+function CompactSignalScoreDisplay({
+  score,
+  overallStatus,
+  hasData,
+}: {
+  score: number | null;
+  overallStatus: AnalysisStatus | null;
+  hasData: boolean;
+}) {
+  const scoreIsAvailable = hasData && score !== null && score !== undefined && Number.isFinite(score);
+  const displayScore = scoreIsAvailable ? Math.round(score) : null;
+  const clampedScore = displayScore === null ? 0 : Math.max(0, Math.min(100, displayScore));
+  const displayStatus = getSignalOverallStatusLabel(overallStatus, scoreIsAvailable ? score : null);
+  const meterColor = getSignalStatusColor(displayStatus);
+
+  return (
+    <div
+      className={`compactSignalScoreDisplay compactSignalScore-${displayStatus.toLowerCase()}`}
+      aria-label={
+        scoreIsAvailable
+          ? `Signal Score ${displayScore} percent, overall status ${displayStatus}`
+          : "Signal Score unavailable"
+      }
+    >
+      <svg className="signal-score-meter compactSignalScoreMeter" viewBox="0 0 130 106" aria-hidden="true">
+        <path
+          className="compactSignalScoreOuter"
+          d="M16.6779 103.938C-10.8555 68.9427 5.22696 6.00502 64.9035 3.64307C98.9156 3.64307 126.489 31.2165 126.489 65.2286C126.489 79.8935 121.363 93.3614 112.805 103.938"
+        />
+        <path
+          className="compactSignalScoreTrack"
+          d="M18.8746 84.5C17.3302 82.6052 15.9338 80.5851 14.7029 78.4573C10.789 71.6913 8.54889 63.8359 8.54889 55.4573C8.54889 30.0522 29.1438 9.45728 54.5489 9.45728C79.954 9.45728 100.549 30.0522 100.549 55.4573C100.549 63.8359 98.3088 71.6913 94.3949 78.4573C93.238 80.4573 91.9348 82.3621 90.5 84.157"
+        />
+        {scoreIsAvailable && (
+          <path
+            className="compactSignalScoreArc"
+            d="M18.8746 84.5C17.3302 82.6052 15.9338 80.5851 14.7029 78.4573C10.789 71.6913 8.54889 63.8359 8.54889 55.4573C8.54889 30.0522 29.1438 9.45728 54.5489 9.45728C79.954 9.45728 100.549 30.0522 100.549 55.4573C100.549 63.8359 98.3088 71.6913 94.3949 78.4573C93.238 80.4573 91.9348 82.3621 90.5 84.157"
+            pathLength={100}
+            stroke={meterColor}
+            strokeDasharray={`${clampedScore} 100`}
+          />
+        )}
+      </svg>
+      <span className="compactSignalScoreValue">
+        {displayScore === null ? (
+          "-"
+        ) : (
+          <>
+            <span>{displayScore}</span>
+            <span>%</span>
+          </>
+        )}
+      </span>
+      <span className="compactSignalScoreStatus">{displayStatus}</span>
+    </div>
+  );
+}
+
 function SignalScoreTrendChart({
   trend,
   isLoading,
@@ -3052,7 +3156,6 @@ function Dashboard({
                   ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
                   : null;
                 const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
-                const tone = getSignalTone(participant.signalScore);
                 const analysisCoversParticipant = Boolean(telemetry);
 
                 return (
@@ -3082,10 +3185,12 @@ function Dashboard({
                           </div>
                         </div>
                       </td>
-                      <td>
-                        <strong className={`scoreValue score-${tone}`}>
-                          {hasData && participant.signalScore !== null && !Number.isNaN(participant.signalScore) ? participant.signalScore : "-"}
-                        </strong>
+                      <td className="scoreCell">
+                        <CompactSignalScoreDisplay
+                          score={participant.signalScore}
+                          overallStatus={participant.overallStatus}
+                          hasData={hasData}
+                        />
                       </td>
                       <td className="statusLabelCell">
                         <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>

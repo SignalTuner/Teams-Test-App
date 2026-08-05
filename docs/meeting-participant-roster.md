@@ -98,6 +98,10 @@ Participant rows should include only users from the same SignalTuner meeting ses
   "joinedAt": "2026-07-10T15:00:00Z",
   "lastSeenAt": "2026-07-10T15:10:00Z",
   "signalScore": 92,
+  "overallStatus": "Excellent",
+  "deviceStatus": "Excellent",
+  "workspaceStatus": "Excellent",
+  "networkStatus": "Excellent",
   "clientDataStatus": "active",
   "clientIsActive": true
 }
