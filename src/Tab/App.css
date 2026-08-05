@@ -120,6 +120,10 @@ a {
   box-shadow: var(--shadow);
 }
 
+.sessionLoadingPanel {
+  justify-items: start;
+}
+
 .authPanel h1,
 .centerPanel h1,
 .topBar h1 {

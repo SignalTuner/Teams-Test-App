@@ -1289,6 +1289,32 @@ function ConfigPage() {
   );
 }
 
+function SessionLoadingPage({ message = "Restoring your SignalTuner session." }: { message?: string }) {
+  return (
+    <main className="pageShell compactShell">
+      <section className="centerPanel sessionLoadingPanel" aria-busy="true" aria-live="polite">
+        <Spinner />
+        <h1>Loading SignalTuner</h1>
+        <p>{message}</p>
+      </section>
+    </main>
+  );
+}
+
+function SignedInOutsideMeetingPage({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <main className="pageShell compactShell">
+      <section className="centerPanel">
+        <h1>Open SignalTuner in a Teams meeting</h1>
+        <p>You are signed in. Open this tab from inside a Microsoft Teams meeting to join a meeting health view.</p>
+        <button className="secondaryButton" onClick={onSignOut} type="button">
+          Sign out
+        </button>
+      </section>
+    </main>
+  );
+}
+
 function Spinner() {
   return <span className="spinner" aria-hidden="true" />;
 }
@@ -3049,6 +3075,7 @@ export default function App() {
   const [isAddingTestingCredit, setIsAddingTestingCredit] = React.useState(false);
   const [busyState, setBusyState] = React.useState<AuthBusyState>("idle");
   const [isRunningInTeams, setIsRunningInTeams] = React.useState(false);
+  const [hasCheckedTeamsContext, setHasCheckedTeamsContext] = React.useState(false);
   const [teamsTheme, setTeamsTheme] = React.useState<TeamsTheme>("default");
   const [themePreference, setThemePreference] = React.useState<SignalTunerThemePreference>(() => getStoredThemePreference());
   const [isClientPromptDismissed, setIsClientPromptDismissed] = React.useState(false);
@@ -3264,6 +3291,7 @@ export default function App() {
     let disposeThemeSubscription: (() => void) | null = null;
 
     const initializeTeamsContext = async () => {
+      setHasCheckedTeamsContext(false);
       setIsLoading(true);
       setBusyState("initializing-teams");
 
@@ -3325,6 +3353,7 @@ export default function App() {
         setError(null);
       } finally {
         if (!isCancelled) {
+          setHasCheckedTeamsContext(true);
           setIsLoading(false);
           setBusyState("idle");
         }
@@ -3685,6 +3714,14 @@ export default function App() {
 
   if (isConfigPage) {
     return <ConfigPage />;
+  }
+
+  if (sessionToken && !dashboard) {
+    if (!hasCheckedTeamsContext || meetingContext || busyState === "checking-session" || busyState === "initializing-teams" || isLoading) {
+      return <SessionLoadingPage />;
+    }
+
+    return <SignedInOutsideMeetingPage onSignOut={signOut} />;
   }
 
   if (pendingProfileAuth && !sessionToken && !dashboard) {
