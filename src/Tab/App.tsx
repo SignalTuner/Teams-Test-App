@@ -2475,8 +2475,8 @@ function Dashboard({
   const expandedParticipant = participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
   const expandedParticipantHasActiveAnalysis = Boolean(
     expandedParticipant &&
-      (getParticipantTelemetry(analysis, expandedParticipant.userId) ||
-        getAnalysisRemainingMs(expandedParticipant, nowMs) > 0)
+      getAnalysisRemainingMs(expandedParticipant, nowMs) > 0 &&
+      (getParticipantTelemetry(analysis, expandedParticipant.userId) || getParticipantLiveTelemetry(expandedParticipant))
   );
 
   React.useEffect(() => {
@@ -2813,8 +2813,10 @@ function Dashboard({
                 const hasActiveAnalysisSession = analysisRemainingMs > 0;
                 const hasData = participant.clientDataStatus === "active";
                 const isExpanded = expandedParticipantId === participant.userId;
-                const telemetry = getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant);
-                const issues = getParticipantIssues(analysis, participant.userId);
+                const telemetry = hasActiveAnalysisSession
+                  ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
+                  : null;
+                const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
                 const tone = getSignalTone(participant.signalScore);
                 const analysisCoversParticipant = Boolean(telemetry);
 
