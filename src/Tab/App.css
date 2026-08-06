@@ -1859,22 +1859,18 @@ input:read-only {
 }
 
 .trendArea {
-  fill: color-mix(in srgb, var(--blue) 18%, transparent);
+  fill: color-mix(in srgb, var(--muted) 14%, transparent);
   stroke: none;
 }
 
-.trendLine {
-  fill: none;
-  stroke: var(--blue);
+.trendSegment {
   stroke-linecap: round;
-  stroke-linejoin: round;
   stroke-width: 2.4;
 }
 
 .trendPoint {
-  fill: var(--panel);
-  stroke: var(--blue);
-  stroke-width: 2;
+  stroke: var(--panel);
+  stroke-width: 1.4;
 }
 
 .signalScoreTrendState {

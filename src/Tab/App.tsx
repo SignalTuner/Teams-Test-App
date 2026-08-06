@@ -689,6 +689,26 @@ function getSignalTone(score: number | null | undefined): "good" | "fair" | "poo
   return "poor";
 }
 
+function getSignalDisplayStatusFromScore(score: number | null | undefined): "Excellent" | "Fair" | "Poor" | "Critical" | "Unknown" {
+  if (score === null || score === undefined || Number.isNaN(score)) {
+    return "Unknown";
+  }
+
+  if (score >= 90) {
+    return "Excellent";
+  }
+
+  if (score >= 80) {
+    return "Fair";
+  }
+
+  if (score >= 70) {
+    return "Poor";
+  }
+
+  return "Critical";
+}
+
 function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): "Excellent" | "Fair" | "Poor" | "Critical" | "Unknown" {
   const normalizedStatus = status?.trim().toLowerCase();
 
@@ -708,23 +728,7 @@ function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: 
     return "Critical";
   }
 
-  if (score === null || score === undefined || Number.isNaN(score)) {
-    return "Unknown";
-  }
-
-  if (score >= 90) {
-    return "Excellent";
-  }
-
-  if (score >= 75) {
-    return "Fair";
-  }
-
-  if (score >= 55) {
-    return "Poor";
-  }
-
-  return "Critical";
+  return getSignalDisplayStatusFromScore(score);
 }
 
 function getSignalOverallStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): SignalDisplayStatus {
@@ -2464,9 +2468,12 @@ function SignalScoreTrendChart({
   const plotHeight = height - top - bottom;
   const coordinates = points.map((point, index) => {
     const score = Math.max(0, Math.min(100, point.averageScore));
+    const color = getSignalStatusColor(getSignalDisplayStatusFromScore(score));
+
     return {
       x: left + (plotWidth / (points.length - 1)) * index,
       y: top + ((100 - score) / 100) * plotHeight,
+      color,
       score,
       timestampUtc: point.timestampUtc,
     };
@@ -2496,9 +2503,25 @@ function SignalScoreTrendChart({
           );
         })}
         <polygon className="trendArea" points={areaPoints} />
-        <polyline className="trendLine" points={polylinePoints} />
+        {coordinates.slice(1).map((point, index) => {
+          const previousPoint = coordinates[index];
+
+          return (
+            <line
+              className="trendSegment"
+              key={`${previousPoint.timestampUtc}-${point.timestampUtc}`}
+              stroke={point.color}
+              x1={previousPoint.x}
+              x2={point.x}
+              y1={previousPoint.y}
+              y2={point.y}
+            >
+              <title>{formatTrendTooltip(point.timestampUtc, point.score)}</title>
+            </line>
+          );
+        })}
         {coordinates.map((point) => (
-          <circle className="trendPoint" cx={point.x} cy={point.y} key={point.timestampUtc} r="3.4">
+          <circle className="trendPoint" cx={point.x} cy={point.y} fill={point.color} key={point.timestampUtc} r="3.4">
             <title>{formatTrendTooltip(point.timestampUtc, point.score)}</title>
           </circle>
         ))}
