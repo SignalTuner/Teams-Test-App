@@ -11,6 +11,11 @@ const sslOptions = {
   cert: process.env.SSL_CRT_FILE ? fs.readFileSync(process.env.SSL_CRT_FILE) : undefined,
 };
 
+const isLocalPort = !process.env.PORT || process.env.PORT === "3978";
+if (isLocalPort && (!sslOptions.cert || !sslOptions.key)) {
+  throw new Error("Local Teams tab debugging requires SSL_CRT_FILE and SSL_KEY_FILE. Run npm run dev:teamsfx or regenerate .localConfigs with Microsoft 365 Agents Toolkit.");
+}
+
 // Workaround for SDK bug in v2.0.6+: ExpressAdapter uses `instanceof http.Server`
 // which fails for https.Server (extends tls.Server, not http.Server).
 // Fix: create the adapter, then replace its internal http.Server with our https.Server.

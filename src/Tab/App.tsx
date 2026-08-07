@@ -12,6 +12,7 @@ import networkDivIcon from "./assets/network-div-icon.svg";
 import networkLatencyIcon from "./assets/network-latency-icon.svg";
 import networkPacketLossIcon from "./assets/network-packet-loss-icon.svg";
 import networkUploadIcon from "./assets/network-upload-icon.svg";
+import signalRecommendationIcon from "./assets/signal-reccommendation-icon.svg";
 import signalTunerDarkLogo from "./assets/signaltuner-logo-horizontal-darkmode.png";
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
@@ -894,6 +895,25 @@ const signalMetricColors = {
   fair: "#F9AE00",
   poor: "#FC6F20",
   critical: "#EC2F3E",
+} as const;
+
+const telemetryInsightTestContent = {
+  overall:
+    "Prioritize stabilizing the meeting experience before tuning individual metrics. Reduce competing device load, confirm the workspace connection is steady, and recheck the network path after one minute of quiet background activity.",
+  categories: [
+    {
+      title: "Device",
+      text: "CPU bursts are likely to collide with Teams audio and video processing. Close browser tabs with active media, pause local sync, and keep Teams as the foreground workload during the call.",
+    },
+    {
+      title: "Workspace",
+      text: "Wi-Fi strength is serviceable but inconsistent. Move closer to the access point, switch to a clearer SSID, or test a wired adapter before starting another analysis window.",
+    },
+    {
+      title: "Network",
+      text: "Latency is trending above the comfort range while upload headroom is thin. Pause large uploads, disable background cloud backup, and watch packet loss during the next speaking turn.",
+    },
+  ],
 } as const;
 
 function getCpuMetricColor(value: number | null): string {
@@ -2444,19 +2464,8 @@ function SignalScoreTrendChart({
   isLoading: boolean;
   error: string | null;
 }) {
-  if (error) {
-    return <p className="signalScoreTrendState">{error}</p>;
-  }
-
-  if (isLoading && !trend) {
-    return <p className="signalScoreTrendState">Loading Signal Score trend.</p>;
-  }
-
   const points = trend?.points.slice(0, 10) ?? [];
-
-  if (points.length !== 10) {
-    return null;
-  }
+  const hasCompleteTrend = points.length === 10;
 
   const width = 320;
   const height = 142;
@@ -2466,7 +2475,7 @@ function SignalScoreTrendChart({
   const bottom = 28;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const coordinates = points.map((point, index) => {
+  const coordinates = hasCompleteTrend ? points.map((point, index) => {
     const score = Math.max(0, Math.min(100, point.averageScore));
     const color = getSignalStatusColor(getSignalDisplayStatusFromScore(score));
 
@@ -2477,19 +2486,18 @@ function SignalScoreTrendChart({
       score,
       timestampUtc: point.timestampUtc,
     };
-  });
+  }) : [];
   const polylinePoints = coordinates.map((point) => `${point.x},${point.y}`).join(" ");
   const areaPoints = `${left},${top + plotHeight} ${polylinePoints} ${left + plotWidth},${top + plotHeight}`;
   const labelIndexes = [0, 4, 9];
 
   return (
-    <div className="signalScoreTrend" aria-label="10-minute Signal Score trend">
+    <div className="signalScoreTrend" aria-label="Average Signal Score over the last 10 minutes.">
       <div className="signalScoreTrendHeader">
-        <strong>10-minute Signal Score</strong>
-        {trend?.deviceId ? <span title={trend.deviceId}>{trend.deviceId}</span> : null}
+        <p>Average Signal Score over the last 10 minutes.</p>
       </div>
       <svg className="signalScoreTrendSvg" role="img" viewBox={`0 0 ${width} ${height}`}>
-        <title>Average Signal Score for each of the last 10 minutes</title>
+        <title>Average Signal Score over the last 10 minutes.</title>
         {[0, 50, 100].map((tick) => {
           const y = top + ((100 - tick) / 100) * plotHeight;
 
@@ -2502,8 +2510,8 @@ function SignalScoreTrendChart({
             </g>
           );
         })}
-        <polygon className="trendArea" points={areaPoints} />
-        {coordinates.slice(1).map((point, index) => {
+        {hasCompleteTrend ? <polygon className="trendArea" points={areaPoints} /> : null}
+        {hasCompleteTrend ? coordinates.slice(1).map((point, index) => {
           const previousPoint = coordinates[index];
 
           return (
@@ -2519,13 +2527,13 @@ function SignalScoreTrendChart({
               <title>{formatTrendTooltip(point.timestampUtc, point.score)}</title>
             </line>
           );
-        })}
-        {coordinates.map((point) => (
+        }) : null}
+        {hasCompleteTrend ? coordinates.map((point) => (
           <circle className="trendPoint" cx={point.x} cy={point.y} fill={point.color} key={point.timestampUtc} r="3.4">
             <title>{formatTrendTooltip(point.timestampUtc, point.score)}</title>
           </circle>
-        ))}
-        {labelIndexes.map((index) => (
+        )) : null}
+        {hasCompleteTrend ? labelIndexes.map((index) => (
           <text
             className="trendXAxisLabel"
             key={index}
@@ -2535,8 +2543,15 @@ function SignalScoreTrendChart({
           >
             {formatTrendTimeLabel(coordinates[index].timestampUtc)}
           </text>
-        ))}
+        )) : null}
+        {!hasCompleteTrend ? (
+          <text className="trendNoDataLabel" textAnchor="middle" x={left + plotWidth / 2} y={top + plotHeight / 2 + 4}>
+            No data
+          </text>
+        ) : null}
       </svg>
+      {isLoading && !trend ? <p className="signalScoreTrendState">Loading Signal Score trend.</p> : null}
+      {error ? <p className="signalScoreTrendState">{error}</p> : null}
     </div>
   );
 }
@@ -3248,16 +3263,15 @@ function Dashboard({
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr className="telemetryDetailRow">
-                        <ParticipantTelemetryDetail
-                          hasData={hasData || hasActiveAnalysisSession}
-                          issues={issues}
-                          signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
-                          signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
-                          signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingId === participant.userId}
-                          telemetry={telemetry}
-                        />
-                      </tr>
+                      <ParticipantTelemetryDetail
+                        hasActiveAnalysisSession={hasActiveAnalysisSession}
+                        hasData={hasData || hasActiveAnalysisSession}
+                        issues={issues}
+                        signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
+                        signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
+                        signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingId === participant.userId}
+                        telemetry={telemetry}
+                      />
                     )}
                   </React.Fragment>
                 );
@@ -3304,6 +3318,7 @@ function Dashboard({
 }
 
 function ParticipantTelemetryDetail({
+  hasActiveAnalysisSession,
   hasData,
   issues,
   signalScoreTrend,
@@ -3311,6 +3326,7 @@ function ParticipantTelemetryDetail({
   signalScoreTrendLoading,
   telemetry,
 }: {
+  hasActiveAnalysisSession: boolean;
   hasData: boolean;
   issues: Issue[];
   signalScoreTrend: SignalScoreTrendResponse | null;
@@ -3318,7 +3334,9 @@ function ParticipantTelemetryDetail({
   signalScoreTrendLoading: boolean;
   telemetry: TelemetryRecord | null;
 }) {
-  const recommendation = issues[0]?.recommendation ?? (hasData ? "Analysis session is active for this participant." : "Prompt the participant to activate the local client.");
+  const recommendation = hasActiveAnalysisSession
+    ? ""
+    : issues[0]?.recommendation ?? (hasData ? "" : "Prompt the participant to activate the local client.");
   const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
   const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
   const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
@@ -3363,34 +3381,63 @@ function ParticipantTelemetryDetail({
 
   return (
     <>
-      <td className="telemetryDetailLead" colSpan={3}>
-        <p>{recommendation}</p>
-        {(signalScoreTrend || signalScoreTrendLoading || signalScoreTrendError) && (
+      <tr className="telemetryDetailRow">
+        <td className="telemetryDetailLead" colSpan={3}>
+          {recommendation ? <p>{recommendation}</p> : null}
           <SignalScoreTrendChart
             error={signalScoreTrendError}
             isLoading={signalScoreTrendLoading}
             trend={signalScoreTrend}
           />
-        )}
-      </td>
-      {telemetryGroups.map((group) => (
-        <td className="telemetryDetailCell" key={group.title}>
-          <div className="telemetryGroupMetrics" aria-label={`${group.title} telemetry`}>
-            {group.metrics.map((item) => (
-              <div className="metricItem" key={item.label}>
-                <span className="metricLabel">
-                  <img src={item.icon} alt="" aria-hidden="true" />
-                  <span>{item.label}</span>
-                </span>
-                <strong style={{ color: item.color }} title={getTelemetryValueTitle(item.value)}>
-                  {truncateTelemetryValue(item.value)}
-                </strong>
-              </div>
-            ))}
-          </div>
         </td>
-      ))}
-      <td className="telemetryDetailActionCell"></td>
+        {telemetryGroups.map((group) => (
+          <td className="telemetryDetailCell" key={group.title}>
+            <div className="telemetryGroupMetrics" aria-label={`${group.title} telemetry`}>
+              {group.metrics.map((item) => (
+                <div className="metricItem" key={item.label}>
+                  <span className="metricLabel">
+                    <img src={item.icon} alt="" aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </span>
+                  <strong style={{ color: item.color }} title={getTelemetryValueTitle(item.value)}>
+                    {truncateTelemetryValue(item.value)}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          </td>
+        ))}
+        <td className="telemetryDetailActionCell"></td>
+      </tr>
+      <tr className="telemetryInsightsRow">
+        <td colSpan={6}>
+          <section className="telemetryInsights" aria-label="Participant telemetry insights">
+            <div className="telemetryInsightsHeader">
+              <img className="signal-reccommendation-icon-svg telemetryInsightsIcon" src={signalRecommendationIcon} alt="" aria-hidden="true" />
+              <h3>Insights</h3>
+            </div>
+            {hasActiveAnalysisSession ? (
+              <>
+                <div className="telemetryInsightOverall">
+                  <span>Overall recommendation</span>
+                  <p>{telemetryInsightTestContent.overall}</p>
+                </div>
+                <div className="telemetryInsightCategories">
+                  {telemetryInsightTestContent.categories.map((insight) => (
+                    <article className="telemetryInsightItem" key={insight.title}>
+                      <span>{insight.title}</span>
+                      <p>{insight.text}</p>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="telemetryInsightsEmpty">Run analysis to gather insights.</p>
+            )}
+          </section>
+        </td>
+        <td className="telemetryDetailActionCell"></td>
+      </tr>
     </>
   );
 }
