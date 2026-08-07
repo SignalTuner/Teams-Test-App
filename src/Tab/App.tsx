@@ -34,6 +34,9 @@ type CurrentUser = {
   displayName: string | null;
   firstName?: string | null;
   lastName?: string | null;
+  hasPassword?: boolean;
+  m365Upn?: string | null;
+  authProvider?: string | null;
   credits: number;
   subscriptionPlan?: string | null;
   activationCode?: string | null;
@@ -320,6 +323,29 @@ function sanitizeAuthError(caught: unknown, fallback: string): string {
   return fallback;
 }
 
+function getFriendlyErrorMessage(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error)) {
+    return fallback;
+  }
+
+  const body = (caught as Error & { body?: string }).body;
+
+  if (body) {
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      if (parsed.message) {
+        return parsed.message;
+      }
+    } catch {
+      if (!body.trim().startsWith("{")) {
+        return body;
+      }
+    }
+  }
+
+  return caught.message || fallback;
+}
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -500,7 +526,9 @@ async function updateAccountPassword(apiBaseUrl: string, token: string, userId: 
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(text || "Failed to update password.");
+    const error = new Error(text || "Failed to update password.") as Error & { body?: string };
+    error.body = text;
+    throw error;
   }
 
   return text || "Password updated successfully.";
@@ -546,6 +574,14 @@ async function completeUserProfile(
       firstName: request.firstName.trim(),
       lastName: request.lastName.trim(),
     }),
+  });
+}
+
+async function updateAccountEmail(apiBaseUrl: string, token: string, email: string): Promise<AuthResponse> {
+  return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/email`, {
+    method: "PUT",
+    headers: buildAuthHeaders(token),
+    body: JSON.stringify({ email: email.trim() }),
   });
 }
 
@@ -1233,6 +1269,9 @@ function normalizeCurrentUser(value: unknown): CurrentUser {
     displayName: readString(record, "displayName", "DisplayName", "userDisplayName", "UserDisplayName", "user_display_name"),
     firstName: readString(record, "firstName", "FirstName", "userFirstName", "UserFirstName", "user_first_name"),
     lastName: readString(record, "lastName", "LastName", "userLastName", "UserLastName", "user_last_name"),
+    hasPassword: readBoolean(record, false, "hasPassword", "HasPassword", "userHasPassword", "UserHasPassword"),
+    m365Upn: readString(record, "m365Upn", "M365Upn", "userM365Upn", "UserM365Upn", "user_m365_upn"),
+    authProvider: readString(record, "authProvider", "AuthProvider", "userAuthProvider", "UserAuthProvider", "user_auth_provider"),
     credits: readNumber(record, 0, "credits", "Credits", "userCredits", "UserCredits", "user_credits"),
     subscriptionPlan: readString(record, "subscriptionPlan", "SubscriptionPlan", "userStripePlan", "UserStripePlan"),
     activationCode: readString(record, "activationCode", "ActivationCode", "userActivationCode", "UserActivationCode"),
@@ -1273,6 +1312,9 @@ function mergeCurrentUser(primary: CurrentUser, fallback: CurrentUser | null): C
     displayName: primary.displayName ?? fallback.displayName,
     firstName: primary.firstName ?? fallback.firstName,
     lastName: primary.lastName ?? fallback.lastName,
+    hasPassword: primary.hasPassword || fallback.hasPassword,
+    m365Upn: primary.m365Upn ?? fallback.m365Upn,
+    authProvider: primary.authProvider ?? fallback.authProvider,
     credits: Number.isFinite(primary.credits) ? primary.credits : fallback.credits,
     subscriptionPlan: primary.subscriptionPlan ?? fallback.subscriptionPlan,
     activationCode: primary.activationCode ?? fallback.activationCode,
@@ -2558,29 +2600,111 @@ function SignalScoreTrendChart({
 
 function AccountPage({
   isAddingTestingCredit,
+  onUpdateProfile,
+  onUpdateEmail,
   onUpdatePassword,
   onAddTestingCredit,
   user,
 }: {
   isAddingTestingCredit: boolean;
+  onUpdateProfile: (firstName: string, lastName: string) => Promise<CurrentUser>;
+  onUpdateEmail: (email: string) => Promise<CurrentUser>;
   onUpdatePassword: (newPassword: string) => Promise<string>;
   onAddTestingCredit: () => Promise<void>;
   user: CurrentUser;
 }) {
-  const [displayName, setDisplayName] = React.useState(user.displayName ?? "");
+  const [firstName, setFirstName] = React.useState(user.firstName ?? "");
+  const [lastName, setLastName] = React.useState(user.lastName ?? "");
   const [email, setEmail] = React.useState(user.email ?? "");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [profileMessage, setProfileMessage] = React.useState<string | null>(null);
+  const [profileError, setProfileError] = React.useState<string | null>(null);
+  const [emailMessage, setEmailMessage] = React.useState<string | null>(null);
+  const [emailError, setEmailError] = React.useState<string | null>(null);
   const [passwordMessage, setPasswordMessage] = React.useState<string | null>(null);
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
+  const [isUpdatingProfile, setIsUpdatingProfile] = React.useState(false);
+  const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
+  const [profileFieldErrors, setProfileFieldErrors] = React.useState<{ firstName?: string; lastName?: string }>({});
+  const firstNameRef = React.useRef<HTMLInputElement | null>(null);
+  const lastNameRef = React.useRef<HTMLInputElement | null>(null);
+  const emailRef = React.useRef<HTMLInputElement | null>(null);
   const subscriptionPlan = user.subscriptionPlan?.trim() || "Free";
   const activationCode = user.activationCode?.trim() || "Not available";
+  const hasPassword = Boolean(user.hasPassword);
 
   React.useEffect(() => {
-    setDisplayName(user.displayName ?? "");
+    setFirstName(user.firstName ?? "");
+    setLastName(user.lastName ?? "");
     setEmail(user.email ?? "");
-  }, [user.displayName, user.email]);
+  }, [user.email, user.firstName, user.lastName]);
+
+  const submitProfileUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setProfileMessage(null);
+    setProfileError(null);
+
+    const nextErrors = {
+      firstName: firstName.trim() ? undefined : "Enter your first name.",
+      lastName: lastName.trim() ? undefined : "Enter your last name.",
+    };
+
+    setProfileFieldErrors(nextErrors);
+
+    if (nextErrors.firstName) {
+      firstNameRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.lastName) {
+      lastNameRef.current?.focus();
+      return;
+    }
+
+    setIsUpdatingProfile(true);
+
+    try {
+      const updatedUser = await onUpdateProfile(firstName, lastName);
+      setFirstName(updatedUser.firstName ?? firstName.trim());
+      setLastName(updatedUser.lastName ?? lastName.trim());
+      setProfileMessage("Display name updated successfully.");
+    } catch (caught) {
+      setProfileError(getFriendlyErrorMessage(caught, "Failed to update display name."));
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const submitEmailUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setEmailMessage(null);
+    setEmailError(null);
+
+    if (!isValidEmail(email)) {
+      setEmailError("Enter a valid email address.");
+      emailRef.current?.focus();
+      return;
+    }
+
+    if (!hasPassword) {
+      setEmailError("Create a password before updating your email.");
+      return;
+    }
+
+    setIsUpdatingEmail(true);
+
+    try {
+      const updatedUser = await onUpdateEmail(email);
+      setEmail(updatedUser.email ?? email.trim());
+      setEmailMessage("Email updated successfully.");
+    } catch (caught) {
+      setEmailError(getFriendlyErrorMessage(caught, "Failed to update email."));
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
 
   const submitPasswordUpdate = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -2607,7 +2731,7 @@ function AccountPage({
       setConfirmPassword("");
       setPasswordMessage(message);
     } catch (caught) {
-      setPasswordError(caught instanceof Error ? caught.message : "Failed to update password.");
+      setPasswordError(getFriendlyErrorMessage(caught, "Failed to update password."));
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -2621,56 +2745,123 @@ function AccountPage({
         </div>
       </div>
       <div className="settingsGrid">
-        <form className="settingsSection" aria-label="Account profile" onSubmit={(event) => void submitPasswordUpdate(event)}>
-          <div className="fieldGroup">
-            <label htmlFor="account-display-name">Display name</label>
-            <input
-              autoComplete="name"
-              id="account-display-name"
-              onChange={(event) => setDisplayName(event.target.value)}
-              type="text"
-              value={displayName}
-            />
-          </div>
-          <div className="fieldGroup">
-            <label htmlFor="account-email">Email</label>
-            <input
-              autoComplete="email"
-              id="account-email"
-              onChange={(event) => setEmail(event.target.value)}
-              type="email"
-              value={email}
-            />
-          </div>
-          <div className="splitFields">
-            <PasswordField
-              error={passwordError ?? undefined}
-              helpText={PASSWORD_REQUIREMENT_TEXT}
-              id="account-new-password"
-              label="New password"
-              onChange={setNewPassword}
-              placeholder="Enter a new password"
-              value={newPassword}
-            />
-            <PasswordField
-              error={newPassword && confirmPassword && newPassword !== confirmPassword ? "Passwords must match." : undefined}
-              id="account-confirm-password"
-              label="Confirm password"
-              onChange={setConfirmPassword}
-              placeholder="Confirm new password"
-              value={confirmPassword}
-            />
-          </div>
-          {passwordMessage && (
-            <p className="settingsStatus" role="status" aria-live="polite">
-              {passwordMessage}
-            </p>
-          )}
-          <button className="primaryButton settingsSaveButton" disabled={isUpdatingPassword} type="submit">
-            {isUpdatingPassword ? <Spinner /> : null}
-            <span>Update password</span>
-          </button>
-        </form>
+        <div className="accountControls">
+          <form className="settingsSection" aria-label="Display name" onSubmit={(event) => void submitProfileUpdate(event)}>
+            <h3>Display name</h3>
+            <div className="splitFields">
+              <div className="fieldGroup">
+                <label htmlFor="account-first-name">First name</label>
+                <input
+                  aria-describedby={profileFieldErrors.firstName ? "account-first-name-error" : undefined}
+                  aria-invalid={Boolean(profileFieldErrors.firstName)}
+                  autoComplete="given-name"
+                  id="account-first-name"
+                  onChange={(event) => setFirstName(event.target.value)}
+                  ref={firstNameRef}
+                  type="text"
+                  value={firstName}
+                />
+                {profileFieldErrors.firstName && (
+                  <p className="fieldError" id="account-first-name-error">
+                    {profileFieldErrors.firstName}
+                  </p>
+                )}
+              </div>
+              <div className="fieldGroup">
+                <label htmlFor="account-last-name">Last name</label>
+                <input
+                  aria-describedby={profileFieldErrors.lastName ? "account-last-name-error" : undefined}
+                  aria-invalid={Boolean(profileFieldErrors.lastName)}
+                  autoComplete="family-name"
+                  id="account-last-name"
+                  onChange={(event) => setLastName(event.target.value)}
+                  ref={lastNameRef}
+                  type="text"
+                  value={lastName}
+                />
+                {profileFieldErrors.lastName && (
+                  <p className="fieldError" id="account-last-name-error">
+                    {profileFieldErrors.lastName}
+                  </p>
+                )}
+              </div>
+            </div>
+            {profileError && <p className="inlineError">{profileError}</p>}
+            {profileMessage && (
+              <p className="settingsStatus" role="status" aria-live="polite">
+                {profileMessage}
+              </p>
+            )}
+            <button className="primaryButton settingsSaveButton" disabled={isUpdatingProfile} type="submit">
+              {isUpdatingProfile ? <Spinner /> : null}
+              <span>Update name</span>
+            </button>
+          </form>
+
+          <form className="settingsSection" aria-label="Account email" onSubmit={(event) => void submitEmailUpdate(event)}>
+            <h3>Email</h3>
+            <div className="fieldGroup">
+              <label htmlFor="account-email">Email</label>
+              <input
+                aria-describedby={emailError ? "account-email-error" : undefined}
+                aria-invalid={Boolean(emailError)}
+                autoComplete="email"
+                id="account-email"
+                onChange={(event) => setEmail(event.target.value)}
+                ref={emailRef}
+                type="email"
+                value={email}
+              />
+              {emailError && (
+                <p className="fieldError" id="account-email-error">
+                  {emailError}
+                </p>
+              )}
+            </div>
+            {!hasPassword && <p className="inlineNote">Create a password before updating your email.</p>}
+            {emailMessage && (
+              <p className="settingsStatus" role="status" aria-live="polite">
+                {emailMessage}
+              </p>
+            )}
+            <button className="primaryButton settingsSaveButton" disabled={isUpdatingEmail || !hasPassword} type="submit">
+              {isUpdatingEmail ? <Spinner /> : null}
+              <span>Update email</span>
+            </button>
+          </form>
+
+          <form className="settingsSection" aria-label="Account password" onSubmit={(event) => void submitPasswordUpdate(event)}>
+            <h3>Password</h3>
+            <div className="splitFields">
+              <PasswordField
+                error={passwordError ?? undefined}
+                helpText={PASSWORD_REQUIREMENT_TEXT}
+                id="account-new-password"
+                label={hasPassword ? "New password" : "Create password"}
+                onChange={setNewPassword}
+                placeholder={hasPassword ? "Enter a new password" : "Create a password"}
+                value={newPassword}
+              />
+              <PasswordField
+                error={newPassword && confirmPassword && newPassword !== confirmPassword ? "Passwords must match." : undefined}
+                id="account-confirm-password"
+                label="Confirm password"
+                onChange={setConfirmPassword}
+                placeholder="Confirm password"
+                value={confirmPassword}
+              />
+            </div>
+            {passwordMessage && (
+              <p className="settingsStatus" role="status" aria-live="polite">
+                {passwordMessage}
+              </p>
+            )}
+            <button className="primaryButton settingsSaveButton" disabled={isUpdatingPassword} type="submit">
+              {isUpdatingPassword ? <Spinner /> : null}
+              <span>{hasPassword ? "Update password" : "Create password"}</span>
+            </button>
+          </form>
+        </div>
         <aside className="settingsSection accountMetaSection">
           <div className="activationCodeBlock accountActivationCode">
             <span>Desktop client activation code</span>
@@ -2786,6 +2977,8 @@ function Dashboard({
   onNavigate,
   onSignOut,
   onThemePreferenceChange,
+  onUpdateProfile,
+  onUpdateEmail,
   onUpdatePassword,
   sessionToken,
   subscriptionPrompt,
@@ -2805,6 +2998,8 @@ function Dashboard({
   onNavigate: (page: InAppPage) => void;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
+  onUpdateProfile: (firstName: string, lastName: string) => Promise<CurrentUser>;
+  onUpdateEmail: (email: string) => Promise<CurrentUser>;
   onUpdatePassword: (newPassword: string) => Promise<string>;
   sessionToken: string;
   subscriptionPrompt: SubscriptionPrompt | null;
@@ -3044,7 +3239,9 @@ function Dashboard({
         <AccountPage
           isAddingTestingCredit={isAddingTestingCredit}
           onAddTestingCredit={onAddTestingCredit}
+          onUpdateEmail={onUpdateEmail}
           onUpdatePassword={onUpdatePassword}
+          onUpdateProfile={onUpdateProfile}
           user={user}
         />
       )}
@@ -4106,6 +4303,63 @@ export default function App() {
     }
   }, [accountUser, apiBaseUrl, dashboard, mergeCredits, refreshAccountInfo, refreshDashboard, sessionToken]);
 
+  const applyAccountUpdateResponse = React.useCallback((response: AuthResponse) => {
+    const nextToken = getSignalTunerSessionToken(response);
+    const nextUser = normalizeAuthCurrentUser(response);
+
+    window.localStorage.setItem(SIGNALTUNER_SESSION_TOKEN_KEY, nextToken);
+    setSessionToken(nextToken);
+    setAccountUser(nextUser);
+    setDashboard((current) =>
+      current
+        ? {
+            ...current,
+            currentUser: mergeCurrentUser(nextUser, current.currentUser),
+          }
+        : current
+    );
+
+    return { nextToken, nextUser };
+  }, []);
+
+  const submitAccountProfileUpdate = React.useCallback(
+    async (firstName: string, lastName: string): Promise<CurrentUser> => {
+      if (!apiBaseUrl || !sessionToken) {
+        throw new Error("SignalTuner is temporarily unavailable. Please try again.");
+      }
+
+      setError(null);
+      const response = await completeUserProfile(apiBaseUrl, sessionToken, { firstName, lastName });
+      const { nextToken, nextUser } = applyAccountUpdateResponse(response);
+
+      if (dashboard) {
+        await refreshDashboard(dashboard.meetingSessionId, nextToken);
+      }
+
+      return nextUser;
+    },
+    [apiBaseUrl, applyAccountUpdateResponse, dashboard, refreshDashboard, sessionToken]
+  );
+
+  const submitAccountEmailUpdate = React.useCallback(
+    async (email: string): Promise<CurrentUser> => {
+      if (!apiBaseUrl || !sessionToken) {
+        throw new Error("SignalTuner is temporarily unavailable. Please try again.");
+      }
+
+      setError(null);
+      const response = await updateAccountEmail(apiBaseUrl, sessionToken, email);
+      const { nextToken, nextUser } = applyAccountUpdateResponse(response);
+
+      if (dashboard) {
+        await refreshDashboard(dashboard.meetingSessionId, nextToken);
+      }
+
+      return nextUser;
+    },
+    [apiBaseUrl, applyAccountUpdateResponse, dashboard, refreshDashboard, sessionToken]
+  );
+
   const submitAccountPasswordUpdate = React.useCallback(
     async (newPassword: string): Promise<string> => {
       const currentUser = mergeCurrentUser(dashboard?.currentUser ?? normalizeCurrentUser(null), accountUser);
@@ -4115,9 +4369,11 @@ export default function App() {
       }
 
       setError(null);
-      return updateAccountPassword(apiBaseUrl, sessionToken, currentUser.userId, newPassword);
+      const message = await updateAccountPassword(apiBaseUrl, sessionToken, currentUser.userId, newPassword);
+      await refreshAccountInfo(sessionToken);
+      return message;
     },
-    [accountUser, apiBaseUrl, dashboard, sessionToken]
+    [accountUser, apiBaseUrl, dashboard, refreshAccountInfo, sessionToken]
   );
 
   const signOut = React.useCallback(() => {
@@ -4235,7 +4491,9 @@ export default function App() {
           onNavigate={setActivePage}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
+          onUpdateEmail={submitAccountEmailUpdate}
           onUpdatePassword={submitAccountPasswordUpdate}
+          onUpdateProfile={submitAccountProfileUpdate}
           sessionToken={sessionToken}
           subscriptionPrompt={subscriptionPrompt}
           themePreference={themePreference}
