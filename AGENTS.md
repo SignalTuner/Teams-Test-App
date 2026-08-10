@@ -14,13 +14,14 @@ The current project map is:
 | SignalTuner WPF local client | `C:\Users\georg\source\repos\SignalTuner` | Windows endpoint telemetry collection, local diagnostics, activation, and desktop behavior | WPF on .NET Framework 4.7.2; this repository owns Windows-client behavior |
 | SignalTuner backend | `C:\Users\georg\source\repos\signaltuner-back` | APIs, authentication enforcement, database access, server-side business rules, background services, and SignalR | .NET 6 Web API with MySQL; this repository owns API and database implementation |
 | SignalTuner website frontend | `C:\Users\georg\source\repos\signaltuner-front` | Public website and browser dashboard | React SPA; this repository owns browser-specific presentation and interaction |
+| SignalTuner service-status SEO frontend | `C:\Users\georg\source\repos\is-service-down` | SEO-friendly public service-status/front-door experience that should share style, messaging patterns, and browser functionality with the website where applicable | React SPA / Create React App; this repository owns SEO-oriented public status pages and domain-specific frontend behavior |
 | SignalTuner Microsoft Teams app | `C:\Users\georg\source\repos\Teams Test App` | Teams tab/meeting experience, Teams context, Teams SSO initiation, manifests, and Teams-specific UI | Microsoft 365/Teams Agents Toolkit project; inspect `package.json` and manifests for the exact runtime |
 
 The project map may expand. When another SignalTuner client, service, website, integration, deployment project, or shared package is discovered, evaluate whether it belongs in this map and tell the user when the shared documentation should be updated.
 
 ### Local path maintenance
 
-The paths above are operational development metadata and must remain synchronized across all four `AGENTS.md` files and `SignalTuner.code-workspace`.
+The paths above are operational development metadata and must remain synchronized across all five `AGENTS.md` files and `SignalTuner.code-workspace`.
 
 When any SignalTuner project is moved, renamed, cloned to a new canonical location, or otherwise changes its local directory:
 
@@ -107,6 +108,7 @@ Use these ownership rules:
 | Canonical MySQL schema and database migrations | `C:\Users\georg\source\repos\signaltuner-back\database` |
 | Windows telemetry collection and desktop behavior | SignalTuner WPF local client |
 | Browser-specific UI and routing | SignalTuner website frontend |
+| SEO-friendly public status/front-door pages and domain-specific public website variants | SignalTuner service-status SEO frontend, aligned with SignalTuner website frontend style and shared browser functionality |
 | Teams context, Teams manifests, Teams-specific UI, and Teams SSO initiation | SignalTuner Microsoft Teams app |
 | Deployed secrets and credentials | Approved secret/configuration stores; never source files or `AGENTS.md` |
 | Exact build/test commands | The relevant repository's solution, project, and package manifests |
@@ -169,7 +171,7 @@ When a database change is requested:
     - Update `database/schema.sql` to the confirmed live structure.
     - Add an entry to `database/SCHEMA_CHANGELOG.md`.
     - Re-run relevant tests and schema checks.
-    - Update all four `AGENTS.md` files only when shared database instructions, paths, ownership, or conventions changed.
+    - Update all five `AGENTS.md` files only when shared database instructions, paths, ownership, or conventions changed.
 
 Never include production rows, personal data, credentials, hostnames, GTID state, or full data dumps in the repository. Do not commit the supplied source dump. Keep migration scripts and `schema.sql` structure-only.
 
@@ -211,7 +213,7 @@ SignalTuner components may be deployed or installed independently. Design shared
 - Prefer adding before removing.
 - Prefer optional fields with safe defaults over immediate renames/removals.
 - Keep old API routes or fields during a documented transition when released clients still depend on them.
-- Do not assume the WPF client, website, Teams app, and backend can be deployed simultaneously.
+- Do not assume the WPF client, website, service-status SEO frontend, Teams app, and backend can be deployed simultaneously.
 - Explicitly identify minimum compatible versions when compatibility changes.
 - For database migrations, distinguish expand, migrate/backfill, and contract/removal phases when appropriate.
 - Avoid destructive changes until all known consumers have migrated.
@@ -371,7 +373,7 @@ Update documentation when changing:
 - Shared vendors, libraries, and operational providers.
 - Domain terminology.
 
-Shared changes must be reflected consistently in all four `AGENTS.md` files. Project-specific changes belong only in the affected repository's project section unless they alter an ecosystem rule.
+Shared changes must be reflected consistently in all five `AGENTS.md` files. Project-specific changes belong only in the affected repository's project section unless they alter an ecosystem rule.
 
 ## Agent completion report
 
