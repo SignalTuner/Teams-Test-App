@@ -3274,7 +3274,7 @@ function Dashboard({
               <span className={`semanticBadge ${teamsStatusMeta.className}`}>{teamsStatusMeta.label}</span>
             </div>
             <p>{teamsStatusMeta.description}</p>
-            <a className="sourceLink" href="https://status.cloud.microsoft/microsoft-365" target="_blank" rel="noreferrer">
+            <a className="sourceLink" href="https://www.signaltuner.com/teamsstatus" target="_blank" rel="noreferrer">
               View Microsoft 365 Service Health
             </a>
           </div>
