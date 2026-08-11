@@ -239,7 +239,6 @@ a {
   line-height: 1.45;
 }
 
-.meetingPreview,
 .authCard {
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -248,64 +247,19 @@ a {
 }
 
 .meetingPreview {
-  width: min(100%, 430px);
-  display: grid;
-  gap: 14px;
-  padding: 16px;
+  display: block;
+  width: min(100%, 560px);
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  object-fit: contain;
 }
 
-.previewHeader,
-.previewRow,
 .authFooter {
   display: flex;
   align-items: center;
-}
-
-.previewHeader,
-.previewRow {
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.previewHeader span,
-.previewRow span {
-  color: var(--muted);
-}
-
-.previewScore {
-  color: var(--ink);
-  font-size: 2rem;
-  font-weight: 400;
-}
-
-.previewRows {
-  display: grid;
-  gap: 8px;
-}
-
-.previewRow {
-  min-height: 32px;
-  padding: 8px 0;
-  border-top: 1px solid var(--line);
-}
-
-.previewGood,
-.previewFair,
-.previewPoor {
-  min-width: 54px;
-  text-align: left;
-}
-
-.previewGood {
-  color: var(--green);
-}
-
-.previewFair {
-  color: #8A5A00;
-}
-
-.previewPoor {
-  color: var(--red);
 }
 
 .authCard {
@@ -1483,6 +1437,11 @@ input:read-only {
   padding-left: var(--signal-column-padding);
   padding-right: var(--signal-column-padding);
   text-align: center;
+}
+
+.scoreHeaderLabel {
+  display: inline-block;
+  transform: translateX(10px);
 }
 
 .participantHeaderLabel {

@@ -15,6 +15,7 @@ import networkUploadIcon from "./assets/network-upload-icon.svg";
 import signalRecommendationIcon from "./assets/signal-reccommendation-icon.svg";
 import signalTunerDarkLogo from "./assets/signaltuner-logo-horizontal-darkmode.png";
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
+import loginDashboardPreview from "./assets/login-dashboard-preview.png";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
 import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
 import workspaceDivIcon from "./assets/workspace-div-icon.svg";
@@ -1669,52 +1670,33 @@ function SignalTunerLogo({ className }: { className: string }) {
 }
 
 function BrandPanel() {
-  const previewParticipants = [
-    { name: "Alicia Johnson", status: "Good", score: 98, className: "previewGood" },
-    { name: "Darrell Steward", status: "Fair", score: 76, className: "previewFair" },
-    { name: "Ralph Edwards", status: "Poor", score: 42, className: "previewPoor" },
-  ];
-
   return (
     <aside className="brandPanel">
       <SignalTunerLogo className="brandLogo" />
       <div className="brandCopy">
-        <h1>Better calls.<br />Better meetings.</h1>
+        <h1>Better connections.<br />Better meetings.</h1>
         <p>
-          SignalTuner monitors Microsoft Teams meeting quality in real time and delivers clear recommendations to help
-          every meeting run at its best.
+          Analyze device, workspace, network, and service telemetry to find and fix issues in Microsoft Teams.
         </p>
       </div>
       <div className="benefitList">
         <article>
           <strong>Real-time monitoring</strong>
-          <span>Continuously track connectivity, call quality, and device health.</span>
+          <span>Continuously track connectivity quality of all meeting participants.</span>
         </article>
         <article>
           <strong>Actionable insights</strong>
-          <span>Identify the likely cause of an issue and get prioritized recommendations.</span>
+          <span>
+            Identify issues impacting meeting quality and get comprehensive analysis reports with prioritized
+            recommendations.
+          </span>
         </article>
         <article>
           <strong>Teams native</strong>
-          <span>Built to work directly within Microsoft Teams meetings.</span>
+          <span>A focus on the Microsoft Teams experience, including live incident reports.</span>
         </article>
       </div>
-      <div className="meetingPreview" aria-hidden="true">
-        <div className="previewHeader">
-          <span>Meeting health</span>
-          <strong>Good</strong>
-        </div>
-        <div className="previewScore">92 / 100</div>
-        <div className="previewRows">
-          {previewParticipants.map((participant) => (
-            <div className="previewRow" key={participant.name}>
-              <span>{participant.name}</span>
-              <strong className={participant.className}>{participant.status}</strong>
-              <span>{participant.score}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <img className="meetingPreview" src={loginDashboardPreview} alt="" aria-hidden="true" />
     </aside>
   );
 }
@@ -3359,7 +3341,7 @@ function Dashboard({
               <tr>
                 <th aria-label="Expand participant telemetry"></th>
                 <th>Participant</th>
-                <th>Signal Score</th>
+                <th><span className="scoreHeaderLabel">Signal Score</span></th>
                 <th className="centeredSignalColumn">
                   <span className="participantHeaderLabel">
                     <img src={deviceDivIcon} alt="" aria-hidden="true" />
