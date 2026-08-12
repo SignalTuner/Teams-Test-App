@@ -80,6 +80,10 @@ type PendingProfileAuth = {
   user: CurrentUser;
 };
 
+type PendingTeamsSsoAccountCreation = {
+  user: CurrentUser;
+};
+
 type ActivationCodeResponse = {
   activationCode?: string;
   ActivationCode?: string;
@@ -95,6 +99,16 @@ type TeamsMeetingContext = {
   currentUserM365ObjectId: string | null;
   currentUserTenantId: string | null;
   currentUserMeetingRole: string | null;
+};
+
+type TeamsSsoOptions = {
+  allowAccountCreation?: boolean;
+  firstName?: string;
+  lastName?: string;
+  termsOfServiceAccepted?: boolean;
+  privacyPolicyAccepted?: boolean;
+  termsOfServiceVersion?: string;
+  privacyPolicyVersion?: string;
 };
 
 type ServiceIncident = {
@@ -263,6 +277,7 @@ const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
 const PRIVACY_POLICY_PATH = "/tabs/privacy";
 const TERMS_OF_SERVICE_PATH = "/tabs/terms";
+const LEGAL_DOCUMENT_EFFECTIVE_DATE = "2026-08-12";
 const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters, including uppercase, lowercase, number, and symbol.";
 const CLIENT_PROMPT_REFRESH_INTERVAL_MS = 20000;
 const CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS = 2000;
@@ -477,7 +492,11 @@ function subscribeToTeamsThemeChanges(onThemeChange: (theme: TeamsTheme) => void
   return () => teamsJs.app.registerOnThemeChangeHandler(() => undefined);
 }
 
-async function authenticateWithTeamsSso(apiBaseUrl: string, meetingContext: TeamsMeetingContext | null): Promise<AuthResponse> {
+async function authenticateWithTeamsSso(
+  apiBaseUrl: string,
+  meetingContext: TeamsMeetingContext | null,
+  options: TeamsSsoOptions = {}
+): Promise<AuthResponse> {
   const teamsSsoToken = await getTeamsSsoToken();
   return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/teams-sso`, {
     method: "POST",
@@ -486,6 +505,13 @@ async function authenticateWithTeamsSso(apiBaseUrl: string, meetingContext: Team
       teamsSsoToken,
       teamsTenantId: meetingContext?.teamsTenantId ?? null,
       teamsMeetingId: meetingContext?.teamsMeetingId ?? null,
+      allowAccountCreation: options.allowAccountCreation ?? false,
+      firstName: options.firstName?.trim() || null,
+      lastName: options.lastName?.trim() || null,
+      termsOfServiceAccepted: options.termsOfServiceAccepted ?? false,
+      privacyPolicyAccepted: options.privacyPolicyAccepted ?? false,
+      termsOfServiceVersion: options.termsOfServiceVersion ?? null,
+      privacyPolicyVersion: options.privacyPolicyVersion ?? null,
     }),
   });
 }
@@ -2067,21 +2093,21 @@ function CreateAccountPage({
   isRunningInTeams,
   onEmailRegister,
   onSignIn,
-  onTeamsSignIn,
+  onTeamsAccountCreate,
 }: {
   busyState: AuthBusyState;
   error: string | null;
   isRunningInTeams: boolean;
   onEmailRegister: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   onSignIn: () => void;
-  onTeamsSignIn: () => Promise<void>;
+  onTeamsAccountCreate: () => void;
 }) {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [termsAccepted, setTermsAccepted] = React.useState(false);
+  const [emailTermsAccepted, setEmailTermsAccepted] = React.useState(false);
   const [fieldErrors, setFieldErrors] = React.useState<{
     firstName?: string;
     lastName?: string;
@@ -2106,7 +2132,7 @@ function CreateAccountPage({
       email: isValidEmail(email) ? undefined : "Enter a valid email address.",
       password: validatePassword(password),
       confirmPassword: password === confirmPassword ? undefined : "Passwords must match.",
-      terms: termsAccepted ? undefined : "Accept the terms to create an account.",
+      terms: emailTermsAccepted ? undefined : "Accept the Terms of Service and Privacy Policy to create an account.",
     };
 
     setFieldErrors(nextErrors);
@@ -2153,7 +2179,7 @@ function CreateAccountPage({
           disabled={!isRunningInTeams || isBusy}
           isBusy={teamsBusy}
           label="Create with Microsoft Teams"
-          onClick={() => void onTeamsSignIn()}
+          onClick={onTeamsAccountCreate}
         />
         <p>Use the Microsoft account already signed in to Teams.</p>
       </div>
@@ -2237,13 +2263,18 @@ function CreateAccountPage({
           placeholder="Enter your password"
           value={confirmPassword}
         />
-        <label className="checkboxRow" htmlFor="terms">
+        <label className="checkboxRow" htmlFor="email-terms">
           <input
-            aria-describedby={fieldErrors.terms ? "terms-error" : undefined}
+            aria-describedby={fieldErrors.terms ? "email-terms-error" : undefined}
             aria-invalid={Boolean(fieldErrors.terms)}
-            checked={termsAccepted}
-            id="terms"
-            onChange={(event) => setTermsAccepted(event.target.checked)}
+            checked={emailTermsAccepted}
+            id="email-terms"
+            onChange={(event) => {
+              setEmailTermsAccepted(event.target.checked);
+              if (event.target.checked) {
+                setFieldErrors((current) => ({ ...current, terms: undefined }));
+              }
+            }}
             ref={termsRef}
             type="checkbox"
           />
@@ -2253,7 +2284,7 @@ function CreateAccountPage({
           </span>
         </label>
         {fieldErrors.terms && (
-          <p className="fieldError" id="terms-error">
+          <p className="fieldError" id="email-terms-error">
             {fieldErrors.terms}
           </p>
         )}
@@ -2275,21 +2306,27 @@ function CreateAccountPage({
 function CompleteProfilePage({
   busyState,
   error,
+  requireLegalConsent = false,
+  secondaryActionLabel = "Sign out",
   user,
   onSubmit,
   onSignOut,
 }: {
   busyState: AuthBusyState;
   error: string | null;
+  requireLegalConsent?: boolean;
+  secondaryActionLabel?: string;
   user: CurrentUser;
   onSubmit: (firstName: string, lastName: string) => Promise<void>;
   onSignOut: () => void;
 }) {
   const [firstName, setFirstName] = React.useState(user.firstName ?? "");
   const [lastName, setLastName] = React.useState(user.lastName ?? "");
-  const [fieldErrors, setFieldErrors] = React.useState<{ firstName?: string; lastName?: string }>({});
+  const [termsAccepted, setTermsAccepted] = React.useState(false);
+  const [fieldErrors, setFieldErrors] = React.useState<{ firstName?: string; lastName?: string; terms?: string }>({});
   const firstNameRef = React.useRef<HTMLInputElement | null>(null);
   const lastNameRef = React.useRef<HTMLInputElement | null>(null);
+  const termsRef = React.useRef<HTMLInputElement | null>(null);
   const isBusy = busyState !== "idle";
 
   const submitProfile = async (event: React.FormEvent) => {
@@ -2298,6 +2335,7 @@ function CompleteProfilePage({
     const nextErrors = {
       firstName: firstName.trim() ? undefined : "Enter your first name.",
       lastName: lastName.trim() ? undefined : "Enter your last name.",
+      terms: !requireLegalConsent || termsAccepted ? undefined : "Accept the Terms of Service and Privacy Policy to create an account.",
     };
 
     setFieldErrors(nextErrors);
@@ -2309,6 +2347,11 @@ function CompleteProfilePage({
 
     if (nextErrors.lastName) {
       lastNameRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.terms) {
+      termsRef.current?.focus();
       return;
     }
 
@@ -2364,13 +2407,42 @@ function CompleteProfilePage({
             )}
           </div>
         </div>
+        {requireLegalConsent && (
+          <>
+            <label className="checkboxRow" htmlFor="profile-terms">
+              <input
+                aria-describedby={fieldErrors.terms ? "profile-terms-error" : undefined}
+                aria-invalid={Boolean(fieldErrors.terms)}
+                checked={termsAccepted}
+                id="profile-terms"
+                onChange={(event) => {
+                  setTermsAccepted(event.target.checked);
+                  if (event.target.checked) {
+                    setFieldErrors((current) => ({ ...current, terms: undefined }));
+                  }
+                }}
+                ref={termsRef}
+                type="checkbox"
+              />
+              <span>
+                I agree to the <a href={TERMS_OF_SERVICE_PATH}>Terms of Service</a> and{" "}
+                <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>.
+              </span>
+            </label>
+            {fieldErrors.terms && (
+              <p className="fieldError" id="profile-terms-error">
+                {fieldErrors.terms}
+              </p>
+            )}
+          </>
+        )}
         <button className="primaryButton fullWidthButton" disabled={isBusy} type="submit">
           {busyState === "teams-sso" ? <Spinner /> : null}
           <span>Continue</span>
         </button>
       </form>
       <button className="secondaryButton fullWidthButton" disabled={isBusy} onClick={onSignOut} type="button">
-        Sign out
+        {secondaryActionLabel}
       </button>
     </AuthLayout>
   );
@@ -3778,6 +3850,7 @@ export default function App() {
   const [activationCodeError, setActivationCodeError] = React.useState<string | null>(null);
   const [accountUser, setAccountUser] = React.useState<CurrentUser | null>(null);
   const [pendingProfileAuth, setPendingProfileAuth] = React.useState<PendingProfileAuth | null>(null);
+  const [pendingTeamsSsoAccountCreation, setPendingTeamsSsoAccountCreation] = React.useState<PendingTeamsSsoAccountCreation | null>(null);
   const [activePage, setActivePage] = React.useState<InAppPage>("dashboard");
   const isMountedRef = React.useRef(true);
 
@@ -4069,12 +4142,14 @@ export default function App() {
       isConfigPage ||
       isPrivacyPolicyPage ||
       isTermsOfServicePage ||
+      authPageMode === "create-account" ||
       !apiBaseUrl ||
       !isRunningInTeams ||
       !meetingContext ||
       sessionToken ||
       dashboard ||
       pendingProfileAuth ||
+      pendingTeamsSsoAccountCreation ||
       window.localStorage.getItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY) === "true" ||
       window.sessionStorage.getItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY) === "true"
     ) {
@@ -4093,10 +4168,10 @@ export default function App() {
         if (!isCancelled && isMountedRef.current) {
           await completeAuth(response);
         }
-      } catch {
+      } catch (caught) {
         window.sessionStorage.setItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY, "true");
         if (!isCancelled && isMountedRef.current) {
-          setError("Teams sign-in could not be completed. Try again or sign in with email.");
+          setError(getFriendlyErrorMessage(caught, "Teams sign-in could not be completed. Try again or sign in with email."));
         }
       } finally {
         if (!isCancelled && isMountedRef.current) {
@@ -4111,7 +4186,20 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isPrivacyPolicyPage, isRunningInTeams, isTermsOfServicePage, meetingContext, pendingProfileAuth, sessionToken]);
+  }, [
+    apiBaseUrl,
+    authPageMode,
+    completeAuth,
+    dashboard,
+    isConfigPage,
+    isPrivacyPolicyPage,
+    isRunningInTeams,
+    isTermsOfServicePage,
+    meetingContext,
+    pendingProfileAuth,
+    pendingTeamsSsoAccountCreation,
+    sessionToken,
+  ]);
 
   React.useEffect(() => {
     if (!sessionToken || !meetingContext || dashboard) {
@@ -4186,12 +4274,65 @@ export default function App() {
       await completeAuth(response);
       window.sessionStorage.removeItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY);
     } catch (caught) {
-      setError(sanitizeAuthError(caught, "Teams sign-in could not be completed. Try again or sign in with email."));
+      setError(getFriendlyErrorMessage(caught, "Teams sign-in could not be completed. Try again or sign in with email."));
     } finally {
       setIsLoading(false);
       setBusyState("idle");
     }
   }, [apiBaseUrl, completeAuth, meetingContext]);
+
+  const beginTeamsSsoAccountCreation = React.useCallback(() => {
+    if (!isRunningInTeams) {
+      setError("Teams account creation is available when this app is opened in Microsoft Teams.");
+      return;
+    }
+
+    setError(null);
+    setPendingTeamsSsoAccountCreation({
+      user: {
+        userId: 0,
+        email: null,
+        displayName: null,
+        credits: 0,
+        clientIsActive: false,
+        authProvider: "teams_sso",
+      },
+    });
+  }, [isRunningInTeams]);
+
+  const createAccountWithTeams = React.useCallback(
+    async (firstName: string, lastName: string) => {
+      if (!apiBaseUrl || !pendingTeamsSsoAccountCreation) {
+        setError("SignalTuner is temporarily unavailable. Please try again.");
+        return;
+      }
+
+      setIsLoading(true);
+      setBusyState("teams-sso");
+      setError(null);
+
+      try {
+        const response = await authenticateWithTeamsSso(apiBaseUrl, meetingContext, {
+          allowAccountCreation: true,
+          firstName,
+          lastName,
+          termsOfServiceAccepted: true,
+          privacyPolicyAccepted: true,
+          termsOfServiceVersion: LEGAL_DOCUMENT_EFFECTIVE_DATE,
+          privacyPolicyVersion: LEGAL_DOCUMENT_EFFECTIVE_DATE,
+        });
+        setPendingTeamsSsoAccountCreation(null);
+        await completeAuth(response);
+        window.sessionStorage.removeItem(SIGNALTUNER_AUTO_SSO_FAILED_KEY);
+      } catch (caught) {
+        setError(getFriendlyErrorMessage(caught, "We could not create your account. Review your profile and consent, then try again."));
+      } finally {
+        setIsLoading(false);
+        setBusyState("idle");
+      }
+    },
+    [apiBaseUrl, completeAuth, meetingContext, pendingTeamsSsoAccountCreation]
+  );
 
   const emailSignIn = React.useCallback(
     async (email: string, password: string) => {
@@ -4505,6 +4646,7 @@ export default function App() {
     setActivationCodeError(null);
     setAccountUser(null);
     setPendingProfileAuth(null);
+    setPendingTeamsSsoAccountCreation(null);
     setActivePage("dashboard");
   }, []);
 
@@ -4528,6 +4670,20 @@ export default function App() {
     return <SignedInOutsideMeetingPage onSignOut={signOut} />;
   }
 
+  if (pendingTeamsSsoAccountCreation && !sessionToken && !dashboard) {
+    return (
+      <CompleteProfilePage
+        busyState={busyState}
+        error={error}
+        requireLegalConsent
+        secondaryActionLabel="Back"
+        user={pendingTeamsSsoAccountCreation.user}
+        onSubmit={createAccountWithTeams}
+        onSignOut={() => setPendingTeamsSsoAccountCreation(null)}
+      />
+    );
+  }
+
   if (pendingProfileAuth && !sessionToken && !dashboard) {
     return (
       <CompleteProfilePage
@@ -4549,7 +4705,7 @@ export default function App() {
           isRunningInTeams={isRunningInTeams}
           onEmailRegister={emailRegister}
           onSignIn={() => navigateAuth("login", returnUrl)}
-          onTeamsSignIn={signInWithTeams}
+          onTeamsAccountCreate={beginTeamsSsoAccountCreation}
         />
       );
     }
