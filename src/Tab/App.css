@@ -1441,7 +1441,7 @@ input:read-only {
 
 .scoreHeaderLabel {
   display: inline-block;
-  transform: translateX(10px);
+  transform: translateX(15px);
 }
 
 .participantHeaderLabel {
