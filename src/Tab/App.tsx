@@ -17,6 +17,7 @@ import signalTunerDarkLogo from "./assets/signaltuner-logo-horizontal-darkmode.p
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 import loginDashboardPreview from "./assets/login-dashboard-preview.png";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
+import privacyPolicyMarkdown from "./content/privacy-policy.md?raw";
 import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
 import workspaceDivIcon from "./assets/workspace-div-icon.svg";
 import workspaceNetworkFrequencyIcon from "./assets/workspace-network-frequency-icon.svg";
@@ -259,6 +260,7 @@ const SIGNALTUNER_SESSION_TOKEN_KEY = "signaltunerSessionToken";
 const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
 const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
+const PRIVACY_POLICY_PATH = "/tabs/privacy";
 const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters, including uppercase, lowercase, number, and symbol.";
 const CLIENT_PROMPT_REFRESH_INTERVAL_MS = 20000;
 const CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS = 2000;
@@ -1508,6 +1510,129 @@ function Spinner() {
   return <span className="spinner" aria-hidden="true" />;
 }
 
+function renderMarkdownInline(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  const boldPattern = /\*\*(.+?)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = boldPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    nodes.push(<strong key={`${match.index}-${match[1]}`}>{match[1]}</strong>);
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function renderPrivacyPolicyMarkdown(markdown: string): React.ReactNode[] {
+  const blocks: React.ReactNode[] = [];
+  const lines = markdown.split(/\r?\n/);
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+  let blockIndex = 0;
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) {
+      return;
+    }
+
+    blocks.push(<p key={`p-${blockIndex++}`}>{renderMarkdownInline(paragraphLines.join(" "))}</p>);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) {
+      return;
+    }
+
+    blocks.push(
+      <ul className="privacyList" key={`ul-${blockIndex++}`}>
+        {listItems.map((item, index) => (
+          <li key={`${index}-${item}`}>{renderMarkdownInline(item)}</li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmedLine);
+    if (heading) {
+      flushParagraph();
+      flushList();
+
+      const level = heading[1].length;
+      const content = renderMarkdownInline(heading[2]);
+      const key = `h-${blockIndex++}`;
+
+      if (level === 1) {
+        blocks.push(<h1 key={key}>{content}</h1>);
+      } else if (level === 2) {
+        blocks.push(<h2 key={key}>{content}</h2>);
+      } else {
+        blocks.push(<h3 key={key}>{content}</h3>);
+      }
+      continue;
+    }
+
+    const listItem = /^-\s+(.+)$/.exec(trimmedLine);
+    if (listItem) {
+      flushParagraph();
+      listItems.push(listItem[1]);
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(trimmedLine.replace(/\s{2,}$/, ""));
+  }
+
+  flushParagraph();
+  flushList();
+  return blocks;
+}
+
+function PrivacyPolicyPage() {
+  React.useEffect(() => {
+    document.title = "SignalTuner Privacy Policy";
+  }, []);
+
+  const backToSignInLink = (
+    <a className="privacyBackButton" href="/tabs/home">
+      <span className="backArrowIcon" aria-hidden="true" />
+      <span>Back to sign in</span>
+    </a>
+  );
+
+  return (
+    <main className="pageShell privacyShell">
+      <article className="privacyPanel">
+        <header className="privacyHeader">
+          <SignalTunerLogo className="privacyLogo" />
+          {backToSignInLink}
+        </header>
+        <div className="privacyContent">{renderPrivacyPolicyMarkdown(privacyPolicyMarkdown)}</div>
+        <footer className="privacyFooter">{backToSignInLink}</footer>
+      </article>
+    </main>
+  );
+}
+
 function AuthErrorAlert({ message }: { message: string | null }) {
   const alertRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -1705,7 +1830,7 @@ function AuthFooter() {
   return (
     <footer className="authFooter">
       <span>&copy; {getCurrentYear()} SignalTuner</span>
-      <a href="https://signaltuner.com/privacy">Privacy Policy</a>
+      <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>
       <a href="https://signaltuner.com/terms">Terms of Service</a>
       <a href="https://signaltuner.com/support">Support</a>
     </footer>
@@ -2122,7 +2247,7 @@ function CreateAccountPage({
           />
           <span>
             I agree to the <a href="https://signaltuner.com/terms">Terms of Service</a> and{" "}
-            <a href="https://signaltuner.com/privacy">Privacy Policy</a>.
+            <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>.
           </span>
         </label>
         {fieldErrors.terms && (
@@ -3623,6 +3748,9 @@ function ParticipantTelemetryDetail({
 
 export default function App() {
   const isConfigPage = window.location.pathname.toLowerCase().startsWith("/tabs/config");
+  const isPrivacyPolicyPage =
+    window.location.pathname.toLowerCase().startsWith(PRIVACY_POLICY_PATH) ||
+    window.location.pathname.toLowerCase().startsWith("/privacy");
   const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_SIGNALTUNER_API_URL);
   const [authPageMode, setAuthPageMode] = React.useState<AuthPageMode>(() => getAuthPageMode());
   const [returnUrl, setReturnUrl] = React.useState(() => getReturnUrl());
@@ -3846,7 +3974,7 @@ export default function App() {
   );
 
   React.useEffect(() => {
-    if (isConfigPage) {
+    if (isConfigPage || isPrivacyPolicyPage) {
       return;
     }
 
@@ -3929,11 +4057,12 @@ export default function App() {
       isCancelled = true;
       disposeThemeSubscription?.();
     };
-  }, [isConfigPage]);
+  }, [isConfigPage, isPrivacyPolicyPage]);
 
   React.useEffect(() => {
     if (
       isConfigPage ||
+      isPrivacyPolicyPage ||
       !apiBaseUrl ||
       !isRunningInTeams ||
       !meetingContext ||
@@ -3976,7 +4105,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isRunningInTeams, meetingContext, pendingProfileAuth, sessionToken]);
+  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isPrivacyPolicyPage, isRunningInTeams, meetingContext, pendingProfileAuth, sessionToken]);
 
   React.useEffect(() => {
     if (!sessionToken || !meetingContext || dashboard) {
@@ -4375,6 +4504,10 @@ export default function App() {
 
   if (isConfigPage) {
     return <ConfigPage />;
+  }
+
+  if (isPrivacyPolicyPage) {
+    return <PrivacyPolicyPage />;
   }
 
   if (sessionToken && !dashboard) {

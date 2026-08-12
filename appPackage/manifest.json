@@ -6,7 +6,7 @@
   "developer": {
     "name": "My App, Inc.",
     "websiteUrl": "https://www.example.com",
-    "privacyUrl": "https://www.example.com/privacy",
+    "privacyUrl": "${{TAB_ENDPOINT}}/tabs/privacy",
     "termsOfUseUrl": "https://www.example.com/termsofuse"
   },
   "icons": {
