@@ -42,6 +42,7 @@ app.tab("config", path.join(__dirname, "./client"));
 app.tab("login", path.join(__dirname, "./client"));
 app.tab("create-account", path.join(__dirname, "./client"));
 app.tab("privacy", path.join(__dirname, "./client"));
+app.tab("terms", path.join(__dirname, "./client"));
 
 (async () => {
   await app.start(process.env.PORT || 3978);

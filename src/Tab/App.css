@@ -124,12 +124,12 @@ a {
   justify-items: start;
 }
 
-.privacyShell {
+.legalShell {
   display: grid;
   justify-items: center;
 }
 
-.privacyPanel {
+.legalPanel {
   width: min(100%, 920px);
   display: grid;
   gap: 22px;
@@ -140,20 +140,20 @@ a {
   box-shadow: var(--shadow);
 }
 
-.privacyLogo {
+.legalLogo {
   display: block;
   width: min(100%, 300px);
   height: auto;
 }
 
-.privacyHeader {
+.legalHeader {
   display: flex;
   gap: 16px;
   align-items: center;
   justify-content: space-between;
 }
 
-.privacyBackButton {
+.legalBackButton {
   min-height: 42px;
   display: inline-flex;
   align-items: center;
@@ -166,10 +166,10 @@ a {
   background: var(--blue);
   font-weight: 400;
   text-decoration: none;
-  animation: privacyBackButtonPulse 10s ease-in-out infinite;
+  animation: legalBackButtonPulse 10s ease-in-out infinite;
 }
 
-.privacyBackButton:hover {
+.legalBackButton:hover {
   background: color-mix(in srgb, var(--blue) 88%, #000000);
 }
 
@@ -205,33 +205,33 @@ a {
   transform: translateY(-50%) rotate(45deg);
 }
 
-.privacyFooter {
+.legalFooter {
   display: flex;
   justify-content: flex-start;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.privacyContent {
+.legalContent {
   display: grid;
   gap: 14px;
   line-height: 1.58;
 }
 
-.privacyContent h1,
-.privacyContent h2,
-.privacyContent h3,
-.privacyContent p,
-.privacyList {
+.legalContent h1,
+.legalContent h2,
+.legalContent h3,
+.legalContent p,
+.legalList {
   margin: 0;
 }
 
-.privacyContent h1 {
+.legalContent h1 {
   font-size: 1.9rem;
   line-height: 1.18;
 }
 
-.privacyContent h2 {
+.legalContent h2 {
   margin-top: 14px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
@@ -239,23 +239,23 @@ a {
   line-height: 1.28;
 }
 
-.privacyContent h3 {
+.legalContent h3 {
   margin-top: 6px;
   font-size: 1rem;
   line-height: 1.3;
 }
 
-.privacyContent p,
-.privacyList {
+.legalContent p,
+.legalList {
   color: var(--muted);
 }
 
-.privacyContent strong {
+.legalContent strong {
   color: var(--ink);
   font-weight: 600;
 }
 
-.privacyList {
+.legalList {
   display: grid;
   gap: 7px;
   padding-left: 22px;
@@ -2251,7 +2251,7 @@ input:read-only {
   }
 }
 
-@keyframes privacyBackButtonPulse {
+@keyframes legalBackButtonPulse {
   0%,
   88%,
   100% {
@@ -2272,7 +2272,7 @@ input:read-only {
 
 @media (prefers-reduced-motion: reduce) {
   .spinner,
-  .privacyBackButton {
+  .legalBackButton {
     animation: none;
   }
 }
@@ -2368,11 +2368,11 @@ input:read-only {
     padding: 22px;
   }
 
-  .privacyPanel {
+  .legalPanel {
     padding: 22px;
   }
 
-  .privacyHeader {
+  .legalHeader {
     align-items: flex-start;
     flex-direction: column;
   }

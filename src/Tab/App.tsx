@@ -18,6 +18,7 @@ import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 import loginDashboardPreview from "./assets/login-dashboard-preview.png";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
 import privacyPolicyMarkdown from "./content/privacy-policy.md?raw";
+import termsOfServiceMarkdown from "./content/terms-of-service.md?raw";
 import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
 import workspaceDivIcon from "./assets/workspace-div-icon.svg";
 import workspaceNetworkFrequencyIcon from "./assets/workspace-network-frequency-icon.svg";
@@ -261,6 +262,7 @@ const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
 const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
 const PRIVACY_POLICY_PATH = "/tabs/privacy";
+const TERMS_OF_SERVICE_PATH = "/tabs/terms";
 const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters, including uppercase, lowercase, number, and symbol.";
 const CLIENT_PROMPT_REFRESH_INTERVAL_MS = 20000;
 const CLIENT_PROMPT_COPIED_REFRESH_INTERVAL_MS = 2000;
@@ -1532,7 +1534,7 @@ function renderMarkdownInline(text: string): React.ReactNode[] {
   return nodes;
 }
 
-function renderPrivacyPolicyMarkdown(markdown: string): React.ReactNode[] {
+function renderLegalMarkdown(markdown: string): React.ReactNode[] {
   const blocks: React.ReactNode[] = [];
   const lines = markdown.split(/\r?\n/);
   let paragraphLines: string[] = [];
@@ -1554,9 +1556,9 @@ function renderPrivacyPolicyMarkdown(markdown: string): React.ReactNode[] {
     }
 
     blocks.push(
-      <ul className="privacyList" key={`ul-${blockIndex++}`}>
+      <ul className="legalList" key={`ul-${blockIndex++}`}>
         {listItems.map((item, index) => (
-          <li key={`${index}-${item}`}>{renderMarkdownInline(item)}</li>
+        <li key={`${index}-${item}`}>{renderMarkdownInline(item)}</li>
         ))}
       </ul>
     );
@@ -1607,27 +1609,27 @@ function renderPrivacyPolicyMarkdown(markdown: string): React.ReactNode[] {
   return blocks;
 }
 
-function PrivacyPolicyPage() {
+function LegalDocumentPage({ markdown, title }: { markdown: string; title: string }) {
   React.useEffect(() => {
-    document.title = "SignalTuner Privacy Policy";
-  }, []);
+    document.title = title;
+  }, [title]);
 
   const backToSignInLink = (
-    <a className="privacyBackButton" href="/tabs/home">
+    <a className="legalBackButton" href="/tabs/home">
       <span className="backArrowIcon" aria-hidden="true" />
       <span>Back to sign in</span>
     </a>
   );
 
   return (
-    <main className="pageShell privacyShell">
-      <article className="privacyPanel">
-        <header className="privacyHeader">
-          <SignalTunerLogo className="privacyLogo" />
+    <main className="pageShell legalShell">
+      <article className="legalPanel">
+        <header className="legalHeader">
+          <SignalTunerLogo className="legalLogo" />
           {backToSignInLink}
         </header>
-        <div className="privacyContent">{renderPrivacyPolicyMarkdown(privacyPolicyMarkdown)}</div>
-        <footer className="privacyFooter">{backToSignInLink}</footer>
+        <div className="legalContent">{renderLegalMarkdown(markdown)}</div>
+        <footer className="legalFooter">{backToSignInLink}</footer>
       </article>
     </main>
   );
@@ -1831,7 +1833,7 @@ function AuthFooter() {
     <footer className="authFooter">
       <span>&copy; {getCurrentYear()} SignalTuner</span>
       <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>
-      <a href="https://signaltuner.com/terms">Terms of Service</a>
+      <a href={TERMS_OF_SERVICE_PATH}>Terms of Service</a>
       <a href="https://signaltuner.com/support">Support</a>
     </footer>
   );
@@ -2246,7 +2248,7 @@ function CreateAccountPage({
             type="checkbox"
           />
           <span>
-            I agree to the <a href="https://signaltuner.com/terms">Terms of Service</a> and{" "}
+            I agree to the <a href={TERMS_OF_SERVICE_PATH}>Terms of Service</a> and{" "}
             <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>.
           </span>
         </label>
@@ -3751,6 +3753,9 @@ export default function App() {
   const isPrivacyPolicyPage =
     window.location.pathname.toLowerCase().startsWith(PRIVACY_POLICY_PATH) ||
     window.location.pathname.toLowerCase().startsWith("/privacy");
+  const isTermsOfServicePage =
+    window.location.pathname.toLowerCase().startsWith(TERMS_OF_SERVICE_PATH) ||
+    window.location.pathname.toLowerCase().startsWith("/terms");
   const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_SIGNALTUNER_API_URL);
   const [authPageMode, setAuthPageMode] = React.useState<AuthPageMode>(() => getAuthPageMode());
   const [returnUrl, setReturnUrl] = React.useState(() => getReturnUrl());
@@ -3974,7 +3979,7 @@ export default function App() {
   );
 
   React.useEffect(() => {
-    if (isConfigPage || isPrivacyPolicyPage) {
+    if (isConfigPage || isPrivacyPolicyPage || isTermsOfServicePage) {
       return;
     }
 
@@ -4057,12 +4062,13 @@ export default function App() {
       isCancelled = true;
       disposeThemeSubscription?.();
     };
-  }, [isConfigPage, isPrivacyPolicyPage]);
+  }, [isConfigPage, isPrivacyPolicyPage, isTermsOfServicePage]);
 
   React.useEffect(() => {
     if (
       isConfigPage ||
       isPrivacyPolicyPage ||
+      isTermsOfServicePage ||
       !apiBaseUrl ||
       !isRunningInTeams ||
       !meetingContext ||
@@ -4105,7 +4111,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isPrivacyPolicyPage, isRunningInTeams, meetingContext, pendingProfileAuth, sessionToken]);
+  }, [apiBaseUrl, completeAuth, dashboard, isConfigPage, isPrivacyPolicyPage, isRunningInTeams, isTermsOfServicePage, meetingContext, pendingProfileAuth, sessionToken]);
 
   React.useEffect(() => {
     if (!sessionToken || !meetingContext || dashboard) {
@@ -4507,7 +4513,11 @@ export default function App() {
   }
 
   if (isPrivacyPolicyPage) {
-    return <PrivacyPolicyPage />;
+    return <LegalDocumentPage markdown={privacyPolicyMarkdown} title="SignalTuner Privacy Policy" />;
+  }
+
+  if (isTermsOfServicePage) {
+    return <LegalDocumentPage markdown={termsOfServiceMarkdown} title="SignalTuner Terms of Service" />;
   }
 
   if (sessionToken && !dashboard) {

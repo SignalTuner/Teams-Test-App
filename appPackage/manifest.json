@@ -7,7 +7,7 @@
     "name": "My App, Inc.",
     "websiteUrl": "https://www.example.com",
     "privacyUrl": "${{TAB_ENDPOINT}}/tabs/privacy",
-    "termsOfUseUrl": "https://www.example.com/termsofuse"
+    "termsOfUseUrl": "${{TAB_ENDPOINT}}/tabs/terms"
   },
   "icons": {
     "color": "color.png",
