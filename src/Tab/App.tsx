@@ -255,8 +255,8 @@ const EXAMPLE_ACTIVE_INCIDENTS: ServiceIncident[] = [
   },
 ];
 
-type AuthPageMode = "login" | "create-account" | "forgot-password";
-type InAppPage = "dashboard" | "account" | "settings";
+type AuthPageMode = "login" | "create-account" | "forgot-password" | "support";
+type InAppPage = "dashboard" | "account" | "settings" | "support";
 type AuthBusyState =
   | "idle"
   | "initializing-teams"
@@ -304,6 +304,10 @@ function navigateAuth(path: AuthPageMode, returnUrl: string): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function navigateToSupport(returnUrl: string): void {
+  navigateAuth("support", returnUrl);
+}
+
 function restoreReturnUrl(returnUrl: string): void {
   try {
     const target = new URL(returnUrl, window.location.origin);
@@ -320,6 +324,10 @@ function getAuthPageMode(): AuthPageMode {
   const path = window.location.pathname.toLowerCase();
   if (path.includes("create-account")) {
     return "create-account";
+  }
+
+  if (path.includes("support")) {
+    return "support";
   }
 
   return path.includes("forgot-password") ? "forgot-password" : "login";
@@ -540,6 +548,36 @@ async function requestPasswordResetEmail(apiBaseUrl: string, email: string): Pro
   }
 
   return text || "Password reset email sent successfully.";
+}
+
+async function sendSupportEmail(
+  apiBaseUrl: string,
+  request: { sender: string; subject: string; body: string }
+): Promise<string> {
+  const response = await fetch(`${apiBaseUrl}/api/User/SendSupportEmail`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    const error = new Error(text || `Support request failed with status ${response.status}`) as Error & {
+      status?: number;
+      body?: string;
+    };
+    error.status = response.status;
+    error.body = text;
+    throw error;
+  }
+
+  try {
+    const parsed = text ? (JSON.parse(text) as { message?: string }) : {};
+    return parsed.message || "Support request sent successfully.";
+  } catch {
+    return text || "Support request sent successfully.";
+  }
 }
 
 async function updateAccountPassword(apiBaseUrl: string, token: string, userId: number, newPassword: string): Promise<string> {
@@ -1854,18 +1892,20 @@ function BrandPanel() {
   );
 }
 
-function AuthFooter() {
+function AuthFooter({ onSupport }: { onSupport: () => void }) {
   return (
     <footer className="authFooter">
       <span>&copy; {getCurrentYear()} SignalTuner</span>
       <a href={PRIVACY_POLICY_PATH}>Privacy Policy</a>
       <a href={TERMS_OF_SERVICE_PATH}>Terms of Service</a>
-      <a href="https://signaltuner.com/support">Support</a>
+      <button type="button" onClick={onSupport}>
+        Support
+      </button>
     </footer>
   );
 }
 
-function AuthLayout({ children }: { children: React.ReactNode }) {
+function AuthLayout({ children, onSupport }: { children: React.ReactNode; onSupport: () => void }) {
   return (
     <main className="pageShell authShell">
       <div className="authLayout">
@@ -1875,7 +1915,7 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
           {children}
         </section>
       </div>
-      <AuthFooter />
+      <AuthFooter onSupport={onSupport} />
     </main>
   );
 }
@@ -1888,6 +1928,7 @@ function LoginPage({
   onCreateAccount,
   onEmailSignIn,
   onForgotPassword,
+  onSupport,
   onTeamsSignIn,
 }: {
   error: string | null;
@@ -1897,6 +1938,7 @@ function LoginPage({
   onCreateAccount: () => void;
   onEmailSignIn: (email: string, password: string) => Promise<void>;
   onForgotPassword: () => void;
+  onSupport: () => void;
   onTeamsSignIn: () => Promise<void>;
 }) {
   const [email, setEmail] = React.useState("");
@@ -1931,7 +1973,7 @@ function LoginPage({
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout onSupport={onSupport}>
       <div className="authHeader">
         <h1 id="auth-title">Welcome back</h1>
         <p>Sign in to your SignalTuner account.</p>
@@ -2008,11 +2050,13 @@ function ForgotPasswordPage({
   error,
   onRequestPasswordReset,
   onSignIn,
+  onSupport,
 }: {
   busyState: AuthBusyState;
   error: string | null;
   onRequestPasswordReset: (email: string) => Promise<boolean>;
   onSignIn: () => void;
+  onSupport: () => void;
 }) {
   const [email, setEmail] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<{ email?: string }>({});
@@ -2044,7 +2088,7 @@ function ForgotPasswordPage({
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout onSupport={onSupport}>
       <div className="authHeader">
         <h1 id="auth-title">Reset password</h1>
         <p>Enter your account email to receive a reset link.</p>
@@ -2087,12 +2131,178 @@ function ForgotPasswordPage({
   );
 }
 
+function SupportForm({
+  defaultEmail,
+  onSubmit,
+}: {
+  defaultEmail?: string | null;
+  onSubmit: (request: { sender: string; subject: string; body: string }) => Promise<string>;
+}) {
+  const [sender, setSender] = React.useState(defaultEmail ?? "");
+  const [subject, setSubject] = React.useState("Support request");
+  const [body, setBody] = React.useState("");
+  const [fieldErrors, setFieldErrors] = React.useState<{ sender?: string; subject?: string; body?: string }>({});
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const [isSending, setIsSending] = React.useState(false);
+  const senderRef = React.useRef<HTMLInputElement | null>(null);
+  const subjectRef = React.useRef<HTMLInputElement | null>(null);
+  const bodyRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const maxBodyLength = 1000;
+
+  React.useEffect(() => {
+    setSender(defaultEmail ?? "");
+  }, [defaultEmail]);
+
+  const submitSupportRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setStatusMessage(null);
+
+    const trimmedSender = sender.trim();
+    const trimmedSubject = subject.trim();
+    const trimmedBody = body.trim();
+    const nextErrors = {
+      sender: isValidEmail(trimmedSender) ? undefined : "Enter a valid email address.",
+      subject: trimmedSubject ? undefined : "Enter a subject.",
+      body: trimmedBody ? undefined : "Enter a message.",
+    };
+
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.sender) {
+      senderRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.subject) {
+      subjectRef.current?.focus();
+      return;
+    }
+
+    if (nextErrors.body) {
+      bodyRef.current?.focus();
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      const message = await onSubmit({ sender: trimmedSender, subject: trimmedSubject, body: trimmedBody });
+      setSubject("Support request");
+      setBody("");
+      setStatusMessage(message);
+    } catch (caught) {
+      setStatusMessage(getFriendlyErrorMessage(caught, "SignalTuner support is temporarily unavailable. Please try again."));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <form className="supportForm" aria-busy={isSending} onSubmit={(event) => void submitSupportRequest(event)}>
+      <div className="fieldGroup">
+        <label htmlFor="support-email">From</label>
+        <input
+          aria-describedby={fieldErrors.sender ? "support-email-error" : undefined}
+          aria-invalid={Boolean(fieldErrors.sender)}
+          autoComplete="email"
+          id="support-email"
+          maxLength={50}
+          onChange={(event) => setSender(event.target.value)}
+          placeholder="name@company.com"
+          ref={senderRef}
+          type="email"
+          value={sender}
+        />
+        {fieldErrors.sender && (
+          <p className="fieldError" id="support-email-error">
+            {fieldErrors.sender}
+          </p>
+        )}
+      </div>
+      <div className="fieldGroup">
+        <label htmlFor="support-subject">Subject</label>
+        <input
+          aria-describedby={fieldErrors.subject ? "support-subject-error" : undefined}
+          aria-invalid={Boolean(fieldErrors.subject)}
+          id="support-subject"
+          maxLength={80}
+          onChange={(event) => setSubject(event.target.value)}
+          ref={subjectRef}
+          type="text"
+          value={subject}
+        />
+        {fieldErrors.subject && (
+          <p className="fieldError" id="support-subject-error">
+            {fieldErrors.subject}
+          </p>
+        )}
+      </div>
+      <div className="fieldGroup">
+        <label htmlFor="support-message">Message</label>
+        <textarea
+          aria-describedby={fieldErrors.body ? "support-message-error support-message-count" : "support-message-count"}
+          aria-invalid={Boolean(fieldErrors.body)}
+          id="support-message"
+          maxLength={maxBodyLength}
+          onChange={(event) => setBody(event.target.value)}
+          placeholder="Hello, I have a question about SignalTuner..."
+          ref={bodyRef}
+          value={body}
+        />
+        <span className="characterCount" id="support-message-count">
+          {body.length} / {maxBodyLength}
+        </span>
+        {fieldErrors.body && (
+          <p className="fieldError" id="support-message-error">
+            {fieldErrors.body}
+          </p>
+        )}
+      </div>
+      {statusMessage && (
+        <p className="supportStatus" role="status" aria-live="polite">
+          {statusMessage}
+        </p>
+      )}
+      <button className="primaryButton fullWidthButton" disabled={isSending} type="submit">
+        {isSending ? <Spinner /> : null}
+        <span>Send</span>
+      </button>
+    </form>
+  );
+}
+
+function SupportAuthPage({
+  defaultEmail,
+  onSendSupportEmail,
+  onSignIn,
+  onSupport,
+}: {
+  defaultEmail?: string | null;
+  onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
+  onSignIn: () => void;
+  onSupport: () => void;
+}) {
+  return (
+    <AuthLayout onSupport={onSupport}>
+      <div className="authHeader">
+        <h1 id="auth-title">Support</h1>
+        <p>Send a message to support@signaltuner.com.</p>
+      </div>
+      <SupportForm defaultEmail={defaultEmail} onSubmit={onSendSupportEmail} />
+      <button className="secondaryButton fullWidthButton" onClick={onSignIn} type="button">
+        Back to sign in
+      </button>
+    </AuthLayout>
+  );
+}
+
 function CreateAccountPage({
   busyState,
   error,
   isRunningInTeams,
   onEmailRegister,
   onSignIn,
+  onSupport,
   onTeamsAccountCreate,
 }: {
   busyState: AuthBusyState;
@@ -2100,6 +2310,7 @@ function CreateAccountPage({
   isRunningInTeams: boolean;
   onEmailRegister: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   onSignIn: () => void;
+  onSupport: () => void;
   onTeamsAccountCreate: () => void;
 }) {
   const [firstName, setFirstName] = React.useState("");
@@ -2165,7 +2376,7 @@ function CreateAccountPage({
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout onSupport={onSupport}>
       <div className="authHeader">
         <h1 id="auth-title">Create your account</h1>
         <p>Start monitoring and improving your Microsoft Teams meetings.</p>
@@ -2310,6 +2521,7 @@ function CompleteProfilePage({
   secondaryActionLabel = "Sign out",
   user,
   onSubmit,
+  onSupport,
   onSignOut,
 }: {
   busyState: AuthBusyState;
@@ -2318,6 +2530,7 @@ function CompleteProfilePage({
   secondaryActionLabel?: string;
   user: CurrentUser;
   onSubmit: (firstName: string, lastName: string) => Promise<void>;
+  onSupport: () => void;
   onSignOut: () => void;
 }) {
   const [firstName, setFirstName] = React.useState(user.firstName ?? "");
@@ -2359,7 +2572,7 @@ function CompleteProfilePage({
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout onSupport={onSupport}>
       <div className="authHeader">
         <h1 id="auth-title">Finish your profile</h1>
         <p>Enter your name so teammates can recognize you in SignalTuner dashboards.</p>
@@ -3143,6 +3356,28 @@ function SettingsPage({
   );
 }
 
+function SupportPage({
+  defaultEmail,
+  onSendSupportEmail,
+}: {
+  defaultEmail?: string | null;
+  onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
+}) {
+  return (
+    <section className="panel supportPagePanel">
+      <div className="sectionTitleRow">
+        <div>
+          <h2>Support</h2>
+          <p>Send a message to support@signaltuner.com.</p>
+        </div>
+      </div>
+      <div className="supportPanelBody">
+        <SupportForm defaultEmail={defaultEmail} onSubmit={onSendSupportEmail} />
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({
   analysis,
   apiBaseUrl,
@@ -3156,6 +3391,7 @@ function Dashboard({
   onAnalyzeUser,
   onInvite,
   onNavigate,
+  onSendSupportEmail,
   onSignOut,
   onThemePreferenceChange,
   onUpdateProfile,
@@ -3177,6 +3413,7 @@ function Dashboard({
   onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
   onNavigate: (page: InAppPage) => void;
+  onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
   onUpdateProfile: (firstName: string, lastName: string) => Promise<CurrentUser>;
@@ -3406,6 +3643,17 @@ function Dashboard({
               >
                 Settings
               </button>
+              <button
+                className={activePage === "support" ? "activeMenuItem" : ""}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  onNavigate("support");
+                  setAccountOpen(false);
+                }}
+              >
+                Support
+              </button>
               <button role="menuitem" type="button" onClick={onSignOut}>
                 Sign out
               </button>
@@ -3429,6 +3677,10 @@ function Dashboard({
 
       {activePage === "settings" && (
         <SettingsPage themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange} />
+      )}
+
+      {activePage === "support" && (
+        <SupportPage defaultEmail={user.email} onSendSupportEmail={onSendSupportEmail} />
       )}
 
       {activePage === "dashboard" && subscriptionPrompt && (
@@ -4143,6 +4395,7 @@ export default function App() {
       isPrivacyPolicyPage ||
       isTermsOfServicePage ||
       authPageMode === "create-account" ||
+      authPageMode === "support" ||
       !apiBaseUrl ||
       !isRunningInTeams ||
       !meetingContext ||
@@ -4634,6 +4887,17 @@ export default function App() {
     [accountUser, apiBaseUrl, dashboard, refreshAccountInfo, sessionToken]
   );
 
+  const submitSupportRequest = React.useCallback(
+    async (request: { sender: string; subject: string; body: string }): Promise<string> => {
+      if (!apiBaseUrl) {
+        throw new Error("SignalTuner support is temporarily unavailable. Please try again.");
+      }
+
+      return sendSupportEmail(apiBaseUrl, request);
+    },
+    [apiBaseUrl]
+  );
+
   const signOut = React.useCallback(() => {
     window.localStorage.removeItem(SIGNALTUNER_SESSION_TOKEN_KEY);
     window.localStorage.setItem(SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY, "true");
@@ -4679,6 +4943,7 @@ export default function App() {
         secondaryActionLabel="Back"
         user={pendingTeamsSsoAccountCreation.user}
         onSubmit={createAccountWithTeams}
+        onSupport={() => navigateToSupport(returnUrl)}
         onSignOut={() => setPendingTeamsSsoAccountCreation(null)}
       />
     );
@@ -4691,6 +4956,7 @@ export default function App() {
         error={error}
         user={pendingProfileAuth.user}
         onSubmit={submitProfile}
+        onSupport={() => navigateToSupport(returnUrl)}
         onSignOut={signOut}
       />
     );
@@ -4705,6 +4971,7 @@ export default function App() {
           isRunningInTeams={isRunningInTeams}
           onEmailRegister={emailRegister}
           onSignIn={() => navigateAuth("login", returnUrl)}
+          onSupport={() => navigateToSupport(returnUrl)}
           onTeamsAccountCreate={beginTeamsSsoAccountCreation}
         />
       );
@@ -4717,6 +4984,18 @@ export default function App() {
           error={error}
           onRequestPasswordReset={requestPasswordReset}
           onSignIn={() => navigateAuth("login", returnUrl)}
+          onSupport={() => navigateToSupport(returnUrl)}
+        />
+      );
+    }
+
+    if (authPageMode === "support") {
+      return (
+        <SupportAuthPage
+          defaultEmail={accountUser?.email}
+          onSendSupportEmail={submitSupportRequest}
+          onSignIn={() => navigateAuth("login", returnUrl)}
+          onSupport={() => navigateToSupport(returnUrl)}
         />
       );
     }
@@ -4730,6 +5009,7 @@ export default function App() {
         onCreateAccount={() => navigateAuth("create-account", returnUrl)}
         onEmailSignIn={emailSignIn}
         onForgotPassword={() => navigateAuth("forgot-password", returnUrl)}
+        onSupport={() => navigateToSupport(returnUrl)}
         onTeamsSignIn={signInWithTeams}
       />
     );
@@ -4770,6 +5050,7 @@ export default function App() {
           onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
           onNavigate={setActivePage}
+          onSendSupportEmail={submitSupportRequest}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
           onUpdateEmail={submitAccountEmailUpdate}

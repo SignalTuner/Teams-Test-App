@@ -61,7 +61,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -571,7 +572,8 @@ a {
 }
 
 .checkboxRow a,
-.authFooter a {
+.authFooter a,
+.authFooter button {
   color: var(--blue);
   font-weight: 400;
 }
@@ -582,6 +584,14 @@ a {
   flex-wrap: wrap;
   gap: 14px;
   font-size: 0.9rem;
+}
+
+.authFooter button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .spinner {
@@ -747,14 +757,24 @@ label {
   font-weight: 400;
 }
 
-input {
+input,
+textarea {
   width: 100%;
-  min-height: 42px;
   border: 1px solid var(--field-border);
   border-radius: 3px;
   padding: 9px 11px;
   color: var(--ink);
   background: var(--field);
+}
+
+input {
+  min-height: 42px;
+}
+
+textarea {
+  min-height: 150px;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .primaryButton,
@@ -787,6 +807,7 @@ input {
 
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
@@ -1057,9 +1078,35 @@ a:focus-visible {
 }
 
 .accountPagePanel,
-.settingsPagePanel {
+.settingsPagePanel,
+.supportPagePanel {
   display: grid;
   gap: 2px;
+}
+
+.supportPanelBody {
+  width: min(100%, 620px);
+}
+
+.supportForm {
+  display: grid;
+  gap: 12px;
+}
+
+.characterCount {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.supportStatus {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--notice);
+  line-height: 1.45;
 }
 
 .settingsGrid {
