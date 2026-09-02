@@ -742,6 +742,403 @@ a {
   line-height: 1.4;
 }
 
+/* Desktop-client onboarding */
+.clientPrompt {
+  width: min(100%, 1440px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  gap: 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--canvas));
+  box-shadow: 0 14px 38px rgba(7, 16, 31, 0.18);
+}
+
+.clientPromptIntro {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 4px 42px 4px 4px;
+}
+
+.clientPromptLogo {
+  width: 164px;
+}
+
+.clientPromptIntro h1 {
+  max-width: 640px;
+  margin: 2px 0 -6px;
+  color: var(--ink);
+  font-size: clamp(2rem, 3vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+.clientPromptLead {
+  max-width: 650px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.setupSteps {
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.setupStep {
+  display: grid;
+  grid-template-columns: 42px 42px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 76px;
+  align-items: start;
+}
+
+.setupStepRail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-self: stretch;
+  justify-content: center;
+}
+
+.setupStepConnector {
+  position: absolute;
+  top: 26px;
+  bottom: 0;
+  left: 20px;
+  width: 1px;
+  z-index: 0;
+  background: color-mix(in srgb, var(--blue) 38%, var(--line));
+}
+
+.setupStepNumber {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--blue) 70%, var(--line));
+  border-radius: 50%;
+  color: var(--blue);
+  background: var(--panel);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.setupStepIcon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--blue) 42%, var(--line));
+  border-radius: 8px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--notice) 76%, var(--panel));
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.setupStepIcon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.meetingPreviewDark {
+  display: none;
+}
+
+:root[data-teams-theme="dark"] .meetingPreviewLight {
+  display: none;
+}
+
+:root[data-teams-theme="dark"] .meetingPreviewDark {
+  display: block;
+}
+
+.setupStepIconButton {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.setupStepIconButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.setupStepIconButton:disabled {
+  cursor: progress;
+  opacity: 0.58;
+}
+
+.setupStepIconFlipped {
+  transform: scaleX(-1);
+}
+
+.setupStepCopy {
+  padding-top: 1px;
+}
+
+.setupStepCopy strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.setupStepCopy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.clientBenefits {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.clientBenefits h2 {
+  margin: 0 0 2px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.benefitItem {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.benefitCheck {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--blue);
+  border-radius: 50%;
+  color: var(--blue);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.clientInfoNote {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 8px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--blue) 42%, var(--line));
+  border-radius: 8px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--notice) 74%, var(--panel));
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.infoGlyph {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--blue);
+  border-radius: 50%;
+  color: var(--blue);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.activationPanel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  margin-left: 10px;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--notice) 52%, var(--panel));
+}
+
+.activationPanelHeader {
+  display: grid;
+  gap: 6px;
+}
+
+.activationPanelHeader h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.3rem;
+}
+
+.activationPanelHeader p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.eyebrow {
+  color: var(--blue);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.activationPanel .copyableCodeWrap {
+  display: block;
+}
+
+.activationPanel .copyableCodeButton {
+  display: flex;
+  width: 100%;
+  min-height: 76px;
+  justify-content: center;
+  padding: 12px 48px 12px 18px;
+  border: 1px solid color-mix(in srgb, var(--blue) 58%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--field) 82%, var(--notice));
+  position: relative;
+}
+
+.activationPanel .copyableCodeButton:hover:not(:disabled) strong {
+  color: transparent;
+}
+
+.activationPanel .copyableCodeButton:hover:not(:disabled)::after {
+  position: absolute;
+  left: 50%;
+  color: var(--blue);
+  content: "Click to copy";
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  transform: translateX(-50%);
+}
+
+.activationPanel .copyableCodeButton strong {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: clamp(1.7rem, 3vw, 2.15rem);
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.activationPanel .copyGlyph {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.activationError {
+  margin: -7px 0 0;
+  color: var(--red);
+  font-size: 0.84rem;
+}
+
+.desktopPreview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+}
+
+.desktopPreviewImage {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+}
+
+.clientActions {
+  display: grid;
+  gap: 10px;
+}
+
+.clientDownloadButton,
+.clientActionButton {
+  width: 100%;
+  min-height: 46px;
+  gap: 9px;
+  font-weight: 650;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 100ms ease;
+}
+
+.clientDownloadButton:hover {
+  border-color: color-mix(in srgb, var(--blue) 78%, #FFFFFF);
+  background: color-mix(in srgb, var(--blue) 82%, #FFFFFF);
+  box-shadow: 0 5px 14px rgba(43, 108, 176, 0.24);
+}
+
+.clientActionButton:hover:not(:disabled) {
+  border-color: var(--blue);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--field) 82%, var(--blue));
+  box-shadow: 0 4px 12px rgba(43, 108, 176, 0.12);
+}
+
+.clientDownloadButton:active,
+.clientActionButton:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.actionIcon {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.actionIconImage {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.clientDownloadButton .actionIconImage {
+  filter: brightness(0) invert(1);
+}
+
+.clientTertiaryButton {
+  color: var(--muted);
+  background: transparent;
+}
+
+.clientSignOut {
+  justify-self: center;
+  border: 0;
+  padding: 2px 8px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.clientSignOut:hover:not(:disabled) {
+  color: var(--ink);
+}
+
 .secondaryGrid,
 .dashboardGrid,
 .issueGrid {
@@ -2449,5 +2846,54 @@ input:read-only {
   .dataList,
   .telemetryGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .clientPrompt {
+    grid-template-columns: 1fr;
+    padding: 22px;
+  }
+
+  .clientPromptIntro {
+    padding: 0 0 26px;
+  }
+
+  .activationPanel {
+    margin: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .clientPrompt {
+    padding: 18px;
+    border-radius: 10px;
+  }
+
+  .clientPromptIntro {
+    gap: 15px;
+  }
+
+  .setupStep {
+    grid-template-columns: 38px 38px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+.setupStepConnector {
+    left: 18px;
+  }
+
+  .setupStepIcon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .activationPanel {
+    padding: 18px;
+  }
+
+  .activationPanel .copyableCodeButton strong {
+    font-size: 1.45rem;
+    letter-spacing: 0.08em;
   }
 }
