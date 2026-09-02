@@ -2997,6 +2997,63 @@ function IncidentDetailModal({
   );
 }
 
+function CreditRequiredModal({
+  prompt,
+  onClose,
+  onOpenAccount,
+}: {
+  prompt: SubscriptionPrompt;
+  onClose: () => void;
+  onOpenAccount: () => void;
+}) {
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="incidentModalOverlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section aria-labelledby="credit-required-title" aria-modal="true" className="incidentModal creditRequiredModal" role="dialog">
+        <header className="incidentModalHeader">
+          <div>
+            <span className="eyebrow">Account notification</span>
+            <h2 id="credit-required-title">More credits required</h2>
+          </div>
+          <button aria-label="Dismiss credit notification" className="modalCloseButton" onClick={onClose} type="button">
+            X
+          </button>
+        </header>
+        <div className="incidentModalBody">
+          <p className="creditRequiredMessage">
+            This analysis requires {prompt.requiredCredits} credits. You have {prompt.availableCredits} available.
+          </p>
+          <div className="creditRequiredActions">
+            <button className="primaryButton" onClick={onOpenAccount} type="button">
+              Open Account
+            </button>
+            <button className="secondaryButton" onClick={onClose} type="button">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CompactSignalScoreDisplay({
   score,
   overallStatus,
@@ -3544,6 +3601,7 @@ function Dashboard({
   onAnalyzeUser,
   onInvite,
   onNavigate,
+  onDismissSubscriptionPrompt,
   onSendSupportEmail,
   onSignOut,
   onThemePreferenceChange,
@@ -3566,6 +3624,7 @@ function Dashboard({
   onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
   onNavigate: (page: InAppPage) => void;
+  onDismissSubscriptionPrompt: () => void;
   onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
@@ -3836,19 +3895,6 @@ function Dashboard({
         <SupportPage defaultEmail={user.email} onSendSupportEmail={onSendSupportEmail} />
       )}
 
-      {activePage === "dashboard" && subscriptionPrompt && (
-        <section className="panel subscriptionPrompt">
-          <h2>More credits required</h2>
-          <p>
-            This analysis requires {subscriptionPrompt.requiredCredits} credits. You have{" "}
-            {subscriptionPrompt.availableCredits} available.
-          </p>
-          <button className="primaryButton" onClick={() => setAccountOpen(true)} type="button">
-            Manage subscription
-          </button>
-        </section>
-      )}
-
       {activePage === "dashboard" && (
         <>
       <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
@@ -4095,6 +4141,18 @@ function Dashboard({
         <IncidentDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
       ) : null}
         </>
+      )}
+
+      {activePage === "dashboard" && subscriptionPrompt && (
+        <CreditRequiredModal
+          prompt={subscriptionPrompt}
+          onClose={onDismissSubscriptionPrompt}
+          onOpenAccount={() => {
+            onDismissSubscriptionPrompt();
+            setAccountOpen(false);
+            onNavigate("account");
+          }}
+        />
       )}
     </main>
   );
@@ -5206,6 +5264,7 @@ export default function App() {
           onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
           onNavigate={setActivePage}
+          onDismissSubscriptionPrompt={() => setSubscriptionPrompt(null)}
           onSendSupportEmail={submitSupportRequest}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}

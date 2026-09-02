@@ -1277,9 +1277,21 @@ a:focus-visible {
   background: #FFF1F1;
 }
 
-.subscriptionPrompt {
-  border-color: #F6D27D;
-  background: #FFFAEA;
+.creditRequiredModal {
+  width: min(100%, 520px);
+}
+
+.creditRequiredMessage {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.creditRequiredActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .accountPanel {
