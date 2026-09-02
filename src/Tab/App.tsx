@@ -997,24 +997,106 @@ const signalMetricColors = {
   critical: "#EC2F3E",
 } as const;
 
-const telemetryInsightTestContent = {
-  overall:
-    "Prioritize stabilizing the meeting experience before tuning individual metrics. Reduce competing device load, confirm the workspace connection is steady, and recheck the network path after one minute of quiet background activity.",
-  categories: [
-    {
-      title: "Device",
-      text: "CPU bursts are likely to collide with Teams audio and video processing. Close browser tabs with active media, pause local sync, and keep Teams as the foreground workload during the call.",
-    },
-    {
-      title: "Workspace",
-      text: "Wi-Fi strength is serviceable but inconsistent. Move closer to the access point, switch to a clearer SSID, or test a wired adapter before starting another analysis window.",
-    },
-    {
-      title: "Network",
-      text: "Latency is trending above the comfort range while upload headroom is thin. Pause large uploads, disable background cloud backup, and watch packet loss during the next speaking turn.",
-    },
-  ],
-} as const;
+type TelemetryInsight = {
+  title: "Device" | "Workspace" | "Network";
+  text: string;
+  severity: "Informational" | "Fair" | "Poor" | "Critical";
+};
+
+type TelemetryRecommendation = {
+  text: string;
+  severity: TelemetryInsight["severity"];
+  priority: number;
+};
+
+function getTelemetryInsightColor(severity: TelemetryInsight["severity"]): string {
+  switch (severity) {
+    case "Critical":
+      return signalMetricColors.critical;
+    case "Poor":
+      return signalMetricColors.poor;
+    case "Fair":
+      return signalMetricColors.fair;
+    default:
+      return signalMetricColors.excellent;
+  }
+}
+
+function buildTelemetryInsights(telemetry: TelemetryRecord | null): {
+  overall: string;
+  categories: TelemetryInsight[];
+  recommendations: TelemetryRecommendation[];
+} {
+  const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
+  const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
+  const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
+  const download = getTelemetryNumber(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed", "SignalDownloadSpeed"]);
+  const upload = getTelemetryNumber(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed", "SignalUploadSpeed"]);
+  const latency = getTelemetryNumber(telemetry, ["latency", "ping", "signal_latency", "latencyMs", "SignalPing"]);
+  const packetLoss = getTelemetryNumber(telemetry, ["packetLoss", "signal_packet_loss", "packet_loss", "SignalPacketLoss"]);
+  const vpn = getTelemetryValue(telemetry, ["vpn", "vpnStatus", "vpnDetected", "signal_vpn", "vpn_status", "signal_vpn_detected", "SignalVpnDetected"]);
+  const categories: TelemetryInsight[] = [];
+  const recommendations: TelemetryRecommendation[] = [];
+
+  if (cpu !== null && memory !== null && cpu >= 85 && memory >= 85) {
+    categories.push({ title: "Device", text: "Your device is under heavy CPU and memory load, which may cause degraded audio/video performance or application responsiveness.", severity: cpu >= 95 || memory >= 95 ? "Critical" : "Poor" });
+    recommendations.push({ text: "Close unnecessary or resource-intensive applications to free system resources.", severity: "Poor", priority: 96 });
+  } else if (cpu !== null && cpu >= 95) {
+    categories.push({ title: "Device", text: "Your CPU is nearly fully utilized and may not have enough processing capacity available for reliable audio or video processing.", severity: "Critical" });
+    recommendations.push({ text: "Close CPU-intensive applications before joining or continuing your meeting.", severity: "Critical", priority: 88 });
+  } else if (memory !== null && memory >= 95) {
+    categories.push({ title: "Device", text: "Available memory is critically low. Windows may begin relying heavily on virtual memory, which can reduce meeting performance.", severity: "Critical" });
+    recommendations.push({ text: "Close memory-intensive applications to free RAM.", severity: "Critical", priority: 86 });
+  } else if ((cpu !== null && cpu >= 85) || (memory !== null && memory >= 85)) {
+    categories.push({ title: "Device", text: cpu !== null && cpu >= 85 ? "CPU utilization is high and may affect meeting performance if demand increases further." : "Memory usage is high and could reduce application responsiveness during a meeting.", severity: "Poor" });
+    recommendations.push({ text: cpu !== null && cpu >= 85 ? "Close unnecessary applications to free processing capacity." : "Close unused applications or browser tabs.", severity: "Poor", priority: 60 });
+  } else {
+    categories.push({ title: "Device", text: "Your device currently has ample processing and memory capacity for a video meeting.", severity: "Informational" });
+  }
+
+  if (wifiStrength !== null && wifiStrength < 40) {
+    categories.push({ title: "Workspace", text: "Your Wi-Fi connection is consistently weak rather than experiencing a temporary signal drop.", severity: "Poor" });
+    recommendations.push({ text: "Move closer to your Wi-Fi access point or improve Wi-Fi coverage in this workspace.", severity: "Poor", priority: 88 });
+  } else if (wifiStrength !== null && wifiStrength < 55) {
+    categories.push({ title: "Workspace", text: "Your Wi-Fi signal is weak. Distance or obstructions between your device and access point may be reducing connection stability.", severity: "Poor" });
+    recommendations.push({ text: "Move closer to the access point or switch to a more reliable Wi-Fi band or access point.", severity: "Poor", priority: 84 });
+  } else {
+    categories.push({ title: "Workspace", text: "Your workspace connection currently provides suitable Wi-Fi coverage for a video meeting.", severity: "Informational" });
+  }
+
+  const networkValues = [download, upload, latency, packetLoss];
+  if (networkValues.some((value) => value !== null)) {
+    const criticalPacketLoss = packetLoss !== null && packetLoss > 5.9;
+    const criticalLatency = latency !== null && latency > 99;
+    const poorBandwidth = (download !== null && download < 0.8) || (upload !== null && upload < 1.2);
+    if (criticalPacketLoss && wifiStrength !== null && wifiStrength >= 70) {
+      categories.push({ title: "Network", text: "Your Wi-Fi signal is strong, so wireless coverage is unlikely to be the primary source of your connection problem.", severity: "Critical" });
+      recommendations.push({ text: "Check router or ISP performance and temporarily test without the VPN if one is connected.", severity: "Critical", priority: 90 });
+    } else if (criticalLatency && vpn === "Connected") {
+      categories.push({ title: "Network", text: "Your connection is experiencing critically high latency while routed through a VPN.", severity: "Critical" });
+      recommendations.push({ text: "If permitted by your organization, temporarily disconnect the VPN and retest.", severity: "Critical", priority: 94 });
+    } else if (criticalPacketLoss || criticalLatency) {
+      categories.push({ title: "Network", text: "Your connection is experiencing broader instability that may affect real-time audio and video communication.", severity: "Critical" });
+      recommendations.push({ text: "Reduce network congestion or switch to a more stable connection.", severity: "Critical", priority: 96 });
+    } else if (poorBandwidth) {
+      categories.push({ title: "Network", text: "Your connection is experiencing a bandwidth bottleneck that may affect meeting quality.", severity: "Poor" });
+      recommendations.push({ text: "Reduce other network activity or switch to a faster internet connection.", severity: "Poor", priority: 90 });
+    } else {
+      categories.push({ title: "Network", text: vpn === "Connected" ? "Your network is performing well even with the VPN connected." : "Your internet connection is currently well suited for real-time audio and video communication.", severity: "Informational" });
+    }
+  } else {
+    categories.push({ title: "Network", text: "Network telemetry is not available for this analysis window.", severity: "Informational" });
+  }
+
+  const rankedRecommendations = recommendations
+    .sort((first, second) => second.priority - first.priority)
+    .filter((recommendation, index, all) => all.findIndex((candidate) => candidate.text === recommendation.text) === index)
+    .slice(0, 3);
+  const overall = rankedRecommendations.length > 0
+    ? rankedRecommendations.map((recommendation) => recommendation.text).join(" ")
+    : "No immediate recommendations. Your current workspace, network, and device appear healthy.";
+  return { overall, categories, recommendations: rankedRecommendations };
+}
 
 function getCpuMetricColor(value: number | null): string {
   if (value === null || value === 0) {
@@ -4048,6 +4130,7 @@ function ParticipantTelemetryDetail({
   const currentNetwork = getTelemetryValue(telemetry, ["currentNetwork", "signal_current_network", "current_network", "SignalCurrentNetwork"]);
   const frequency = getTelemetryValue(telemetry, ["wifiBand", "signal_wifi_band", "wifi_band", "frequency", "networkFrequency", "SignalWifiBand"]);
   const vpn = getTelemetryValue(telemetry, ["vpn", "vpnStatus", "vpnDetected", "signal_vpn", "vpn_status", "signal_vpn_detected", "SignalVpnDetected"]);
+  const telemetryInsights = buildTelemetryInsights(telemetry);
   const processor = getTelemetryValue(telemetry, ["processor", "signal_processor", "cpuProcessor", "deviceProcessor", "SignalProcessor"]);
   const cores = getTelemetryValue(telemetry, ["cores", "signal_cores", "cpuCores", "deviceCores", "SignalCores"]);
   const telemetryGroups = [
@@ -4120,14 +4203,16 @@ function ParticipantTelemetryDetail({
             {hasActiveAnalysisSession ? (
               <>
                 <div className="telemetryInsightOverall">
-                  <span>Overall recommendation</span>
-                  <p>{telemetryInsightTestContent.overall}</p>
+                  <span>Overall recommendations</span>
+                  {telemetryInsights.recommendations.length > 0 ? telemetryInsights.recommendations.map((recommendation) => (
+                    <p key={recommendation.text}>- {recommendation.text}</p>
+                  )) : <p>{telemetryInsights.overall}</p>}
                 </div>
                 <div className="telemetryInsightCategories">
-                  {telemetryInsightTestContent.categories.map((insight) => (
+                  {telemetryInsights.categories.map((insight) => (
                     <article className="telemetryInsightItem" key={insight.title}>
-                      <span>{insight.title}</span>
-                      <p>{insight.text}</p>
+                      <span style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.title}</span>
+                      <p style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.text}</p>
                     </article>
                   ))}
                 </div>
