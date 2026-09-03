@@ -1599,7 +1599,9 @@ input:read-only {
 }
 
 .statusIncidentsPanel {
-  min-height: 168px;
+  height: 235px;
+  min-height: 0;
+  overflow: visible;
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.9fr);
   gap: 16px;
@@ -1738,7 +1740,7 @@ input:read-only {
 
 .semanticIncidentDropdown {
   position: relative;
-  margin-top: 8px;
+  margin-top: 0;
   z-index: 10;
 }
 
@@ -2765,6 +2767,11 @@ input:read-only {
   .statusIncidentsPanel,
   .meetingHealthPanel {
     grid-template-columns: 1fr;
+  }
+
+  .statusIncidentsPanel {
+    height: auto;
+    overflow-y: visible;
   }
 
   .serviceStatusCard {
