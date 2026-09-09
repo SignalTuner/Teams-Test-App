@@ -2563,75 +2563,141 @@ input:read-only {
 
 .meetingHealthPanel {
   display: grid;
-  grid-template-columns: 138px 180px minmax(0, 1fr) minmax(190px, 240px);
-  gap: 26px;
+  grid-template-columns: 210px minmax(0, 1fr) minmax(190px, 240px);
+  gap: 0;
   align-items: center;
   padding: 24px 34px;
 }
 
-.healthDial {
-  width: 104px;
-  height: 104px;
+.meetingScoreDisplay {
   display: grid;
-  place-items: center;
-  justify-self: center;
-  border: 8px solid currentColor;
-  border-right-color: color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 999px;
-}
-
-.healthDial strong {
-  align-self: start;
-  font-size: 0.9rem;
-}
-
-.dialIcon {
-  align-self: end;
-  font-weight: 400;
-}
-
-.health-good {
-  color: #00A84F;
-}
-
-.health-fair {
-  color: #F5A400;
-}
-
-.health-poor {
-  color: #F43030;
-}
-
-.health-none {
-  color: var(--muted);
-}
-
-.aggregateScore {
-  display: grid;
-  gap: 2px;
-  padding-right: 24px;
+  justify-items: center;
+  gap: 8px;
+  padding-right: 26px;
   border-right: 1px solid var(--line);
 }
 
-.aggregateScore span {
+.meetingScoreLabel {
   color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.aggregateScore strong {
-  color: #F5A400;
-  font-size: 2.2rem;
-  line-height: 1;
+.meetingScoreDisplay .compactSignalScoreDisplay {
+  width: 144px;
+  min-height: 112px;
+  gap: 3px;
 }
 
-.healthBadges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
+.meetingScoreDisplay .compactSignalScoreMeter {
+  width: 116px;
+  height: 84px;
+  transform: translateY(10px);
+}
+
+.meetingScoreDisplay .compactSignalScoreValue {
+  font-size: 2rem;
+  transform: translateX(-6px);
+}
+
+.meetingScoreDisplay .compactSignalScoreValue span:last-child {
+  font-size: 0.9rem;
+}
+
+.meetingScoreDisplay .compactSignalScoreStatus {
+  max-width: 144px;
+  font-size: 0.82rem;
+  transform: translateX(-6px);
+}
+
+.meetingHealthMetrics {
+  display: grid;
+  grid-column: 2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+}
+
+.meetingHealthMetric {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  gap: 6px;
+  padding: 0 18px;
+  text-align: center;
+}
+
+.meetingHealthMetric:not(:last-child) {
+  border-right: 1px solid var(--line);
+}
+
+.meetingHealthMetricIcon {
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+}
+
+.meetingHealthMetricIcon svg {
+  width: 50px;
+  height: 50px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.meetingHealthMetricIcon svg.meetingHealthGroupIcon {
+  display: block;
+  width: 50px;
+  height: 50px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.meetingHealthMetricIcon svg.meetingHealthIncidentIcon {
+  fill: currentColor;
+  stroke: none;
+}
+
+.meetingHealthMetricIcon svg.meetingHealthConnectivityIcon {
+  fill: currentColor;
+  stroke: none;
+}
+
+.meetingHealthMetricValue {
+  font-size: 1.65rem;
+  line-height: 1.1;
+}
+
+.meetingHealthMetricLabel {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.meetingHealthMetric-good {
+  color: var(--green);
+}
+
+.meetingHealthMetric-warning {
+  color: var(--yellow);
+}
+
+.meetingHealthMetric-poor {
+  color: var(--red);
 }
 
 .healthActions {
+  grid-column: 3;
   justify-items: start;
+  min-width: 0;
+  padding-left: 26px;
+  border-left: 1px solid var(--line);
 }
 
 .issueCard {
@@ -2805,11 +2871,33 @@ input:read-only {
     padding: 20px;
   }
 
-  .aggregateScore {
+  .meetingScoreDisplay {
     padding-right: 0;
     border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 18px;
+  }
+
+  .meetingHealthMetrics {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .meetingHealthMetric {
+    padding: 14px 0;
+  }
+
+  .meetingHealthMetric:not(:last-child) {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .healthActions {
+    grid-column: auto;
+    padding: 18px 0 0;
     border-top: 1px solid var(--line);
-    padding-top: 16px;
+    border-left: 0;
   }
 
   .authShell {

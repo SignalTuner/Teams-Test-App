@@ -3058,10 +3058,12 @@ function CompactSignalScoreDisplay({
   score,
   overallStatus,
   hasData,
+  accessibleLabel = "Signal Score",
 }: {
   score: number | null;
   overallStatus: AnalysisStatus | null;
   hasData: boolean;
+  accessibleLabel?: string;
 }) {
   const scoreIsAvailable = hasData && score !== null && score !== undefined && Number.isFinite(score);
   const displayScore = scoreIsAvailable ? Math.round(score) : null;
@@ -3074,8 +3076,8 @@ function CompactSignalScoreDisplay({
       className={`compactSignalScoreDisplay compactSignalScore-${displayStatus.toLowerCase()}`}
       aria-label={
         scoreIsAvailable
-          ? `Signal Score ${displayScore} percent, overall status ${displayStatus}`
-          : "Signal Score unavailable"
+          ? `${accessibleLabel} ${displayScore} percent, overall status ${displayStatus}`
+          : `${accessibleLabel} unavailable`
       }
     >
       <svg className="signal-score-meter compactSignalScoreMeter" viewBox="0 0 130 106" aria-hidden="true">
@@ -3640,14 +3642,17 @@ function Dashboard({
   const [recentIncidentsOpen, setRecentIncidentsOpen] = React.useState(false);
   const recentIncidentsRef = React.useRef<HTMLDivElement | null>(null);
   const [selectedIncident, setSelectedIncident] = React.useState<ServiceIncident | null>(null);
-  const [expandedParticipantId, setExpandedParticipantId] = React.useState<number | null>(null);
+  const [expandedParticipantIds, setExpandedParticipantIds] = React.useState<Set<number>>(() => new Set());
   const [signalScoreTrends, setSignalScoreTrends] = React.useState<Record<number, SignalScoreTrendResponse>>({});
-  const [signalScoreTrendLoadingId, setSignalScoreTrendLoadingId] = React.useState<number | null>(null);
+  const [signalScoreTrendLoadingIds, setSignalScoreTrendLoadingIds] = React.useState<Set<number>>(() => new Set());
   const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
   const [nowMs, setNowMs] = React.useState(Date.now());
   const user = dashboard.currentUser;
   const participants = React.useMemo(() => sortParticipantsByMeetingRole(dashboard.participants), [dashboard.participants]);
   const activeParticipants = participants.filter((participant) => participant.clientDataStatus === "active");
+  const participantsWithActiveScores = activeParticipants.filter(
+    (participant) => participant.signalScore !== null && Number.isFinite(participant.signalScore)
+  );
   const activeIncidents =
     dashboard.teamsServiceHealth.activeIncidents.length > 0
       ? dashboard.teamsServiceHealth.activeIncidents
@@ -3656,29 +3661,53 @@ function Dashboard({
   const teamsStatus =
     dashboard.teamsServiceHealth.activeIncidents.length > 0 ? normalizeTeamsServiceStatus(dashboard.teamsServiceHealth) : "activeIncident";
   const teamsStatusMeta = getTeamsStatusMeta(teamsStatus);
-  const goodParticipants = participants.filter((participant) => getSignalTone(participant.signalScore) === "good").length;
-  const aggregateScore =
-    activeParticipants.length > 0
+  const connectedParticipantCount = activeParticipants.length;
+  const totalParticipantCount = participants.length;
+  const connectivityIssueCount = participants.filter((participant) => participant.clientDataStatus !== "active").length;
+  const activeIncidentCount = dashboard.teamsServiceHealth.activeIncidents.length;
+  const meetingScore =
+    participantsWithActiveScores.length > 0
       ? Math.round(
-          activeParticipants.reduce((sum, participant) => sum + (participant.signalScore ?? 0), 0) / activeParticipants.length
+          participantsWithActiveScores.reduce((sum, participant) => sum + (participant.signalScore ?? 0), 0) /
+            participantsWithActiveScores.length
         )
       : null;
-  const aggregateTone = getSignalTone(aggregateScore);
-  const aggregateLabel = aggregateTone === "good" ? "Good" : aggregateTone === "fair" ? "Fair" : aggregateTone === "poor" ? "Poor" : "No data";
-  const dashboardSummary =
-    teamsStatus === "operational"
-      ? "Microsoft Teams is operational. Participant telemetry is summarized from active SignalTuner clients."
-      : "Microsoft Teams is experiencing an active incident that may impact meeting quality.";
-  const participantSummary =
-    activeParticipants.length === participants.length
-      ? "All participants with SignalTuner data are reporting into this meeting."
-      : `Participant connectivity is mixed. ${participants.length - activeParticipants.length} participant(s) may need to activate the local client.`;
-  const expandedParticipant = participants.find((participant) => participant.userId === expandedParticipantId) ?? null;
-  const expandedParticipantHasActiveAnalysis = Boolean(
-    expandedParticipant &&
-      getAnalysisRemainingMs(expandedParticipant, nowMs) > 0 &&
-      (getParticipantTelemetry(analysis, expandedParticipant.userId) || getParticipantLiveTelemetry(expandedParticipant))
+  const expandedAnalyzableParticipantIds = participants
+    .filter(
+      (participant) =>
+        expandedParticipantIds.has(participant.userId) &&
+        participant.clientDataStatus === "active" &&
+        getAnalysisRemainingMs(participant, nowMs) > 0 &&
+        Boolean(getParticipantTelemetry(analysis, participant.userId) || getParticipantLiveTelemetry(participant))
+    )
+    .map((participant) => participant.userId);
+  const expandedAnalyzableParticipantKey = expandedAnalyzableParticipantIds.join(",");
+
+  const toggleParticipantTelemetry = React.useCallback((participantId: number) => {
+    setExpandedParticipantIds((current) => {
+      const next = new Set(current);
+      if (next.has(participantId)) {
+        next.delete(participantId);
+      } else {
+        next.add(participantId);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const handleAnalyzeUser = React.useCallback(
+    async (participantId: number) => {
+      setExpandedParticipantIds((current) => new Set(current).add(participantId));
+      await onAnalyzeUser(participantId);
+    },
+    [onAnalyzeUser]
   );
+
+  const handleAnalyzeAll = React.useCallback(async () => {
+    setExpandedParticipantIds(new Set(participants.map((participant) => participant.userId)));
+    await onAnalyzeAll();
+  }, [onAnalyzeAll, participants]);
 
   React.useEffect(() => {
     if (!participants.some((participant) => getAnalysisRemainingMs(participant, Date.now()) > 0)) {
@@ -3735,19 +3764,15 @@ function Dashboard({
   }, [selectedIncident]);
 
   React.useEffect(() => {
-    if (!expandedParticipantId || !apiBaseUrl || !sessionToken) {
-      return;
-    }
-
-    if (!expandedParticipant || expandedParticipant.clientDataStatus !== "active" || !expandedParticipantHasActiveAnalysis) {
+    if (!expandedAnalyzableParticipantKey || !apiBaseUrl || !sessionToken) {
       return;
     }
 
     let isCancelled = false;
-    const participantId = expandedParticipant.userId;
+    const participantIds = expandedAnalyzableParticipantKey.split(",").map(Number);
 
-    const loadTrend = async () => {
-      setSignalScoreTrendLoadingId(participantId);
+    const loadTrend = async (participantId: number) => {
+      setSignalScoreTrendLoadingIds((current) => new Set(current).add(participantId));
 
       try {
         const data = normalizeSignalScoreTrend(
@@ -3776,25 +3801,35 @@ function Dashboard({
         }
       } finally {
         if (!isCancelled) {
-          setSignalScoreTrendLoadingId((current) => (current === participantId ? null : current));
+          setSignalScoreTrendLoadingIds((current) => {
+            const next = new Set(current);
+            next.delete(participantId);
+            return next;
+          });
         }
       }
     };
 
-    void loadTrend();
-    const intervalId = window.setInterval(() => void loadTrend(), 10000);
+    const loadExpandedTrends = () => {
+      participantIds.forEach((participantId) => void loadTrend(participantId));
+    };
+
+    loadExpandedTrends();
+    const intervalId = window.setInterval(loadExpandedTrends, 10000);
 
     return () => {
       isCancelled = true;
       window.clearInterval(intervalId);
+      setSignalScoreTrendLoadingIds((current) => {
+        const next = new Set(current);
+        participantIds.forEach((participantId) => next.delete(participantId));
+        return next;
+      });
     };
   }, [
     apiBaseUrl,
     dashboard.meetingSessionId,
-    expandedParticipant?.clientDataStatus,
-    expandedParticipant?.userId,
-    expandedParticipantHasActiveAnalysis,
-    expandedParticipantId,
+    expandedAnalyzableParticipantKey,
     sessionToken,
   ]);
 
@@ -3897,6 +3932,219 @@ function Dashboard({
 
       {activePage === "dashboard" && (
         <>
+      <section className="panel meetingHealthPanel">
+        <div className="meetingScoreDisplay">
+          <span className="meetingScoreLabel">Meeting Score</span>
+          <CompactSignalScoreDisplay
+            accessibleLabel="Meeting Score"
+            score={meetingScore}
+            overallStatus={null}
+            hasData={meetingScore !== null}
+          />
+        </div>
+        <div className="meetingHealthMetrics">
+          <MeetingHealthMetric
+            icon={
+              <svg className="meetingHealthGroupIcon" viewBox="0 0 24 24" focusable="false">
+                <circle cx="12" cy="8.5" r="2.1" />
+                <path d="M16.2 16.4a4.2 4.2 0 0 0-8.4 0Z" />
+                <circle cx="18.2" cy="8.5" r="2.1" />
+                <path d="M17.6 16.4h4.1a4.2 4.2 0 0 0-6.2-3.7" />
+                <circle cx="5.8" cy="8.5" r="2.1" />
+                <path d="M6.4 16.4H2.3a4.2 4.2 0 0 1 6.2-3.7" />
+              </svg>
+            }
+            label={<>Meeting Participants<br />Connected</>}
+            tone={totalParticipantCount > 0 && connectedParticipantCount === totalParticipantCount ? "good" : connectedParticipantCount === 0 ? "poor" : "warning"}
+            value={`${connectedParticipantCount} / ${totalParticipantCount}`}
+          />
+          <MeetingHealthMetric
+            icon={
+              activeIncidentCount > 0 ? (
+                <svg className="meetingHealthIncidentIcon" viewBox="0 0 64 64" focusable="false">
+                  <path d="M32.427 7.987c2.183.124 4 1.165 5.096 3.281l17.936 36.208c1.739 3.66-.954 8.585-5.373 8.656H13.967c-4.022-.064-7.322-4.631-5.352-8.696l18.271-36.207c.342-.65.498-.838.793-1.179 1.186-1.375 2.483-2.111 4.748-2.063Zm-.295 3.997c-.687.034-1.316.419-1.659 1.017-6.312 11.979-12.397 24.081-18.301 36.267-.546 1.225.391 2.797 1.762 2.863 12.06.195 24.125.195 36.185 0 1.325-.064 2.321-1.584 1.769-2.85-5.793-12.184-11.765-24.286-17.966-36.267-.366-.651-.903-1.042-1.79-1.03Z" />
+                  <path d="M33.631 40.581h-3.348l-.368-16.449h4.1l-.384 16.449Zm-3.828 5.03c0-.609.197-1.113.592-1.514.396-.4.935-.601 1.618-.601.684 0 1.223.201 1.618.601.395.401.593.905.593 1.514 0 .587-.193 1.078-.577 1.473-.385.395-.929.593-1.634.593-.705 0-1.249-.198-1.634-.593-.384-.395-.576-.886-.576-1.473Z" />
+                </svg>
+              ) : (
+                <svg className="meetingHealthIncidentIcon" viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2Zm0 18c-4.5 0-8-3.5-8-8s3.5-8 8-8 8 3.5 8 8-3.5 8-8 8Z" />
+                  <path d="m9.8 16.8-3.7-3.6 1.4-1.5L9.8 14l5.7-6.1L17 9.3l-7.2 7.5Z" />
+                </svg>
+              )
+            }
+            label={<>Microsoft Teams<br />Active Incidents</>}
+            tone={activeIncidentCount === 0 ? "good" : "warning"}
+            value={String(activeIncidentCount)}
+          />
+          <MeetingHealthMetric
+            icon={
+              <svg className="meetingHealthConnectivityIcon" viewBox="0 0 56 56" focusable="false">
+                {connectivityIssueCount > 0 ? (
+                  <path d="M33.7169 50.6051C45.9141 50.6051 56 40.4968 56 28.2994 56 16.1245 45.892 5.9937 33.6944 5.9937 22.418 5.9937 12.9611 14.6419 11.5909 25.5365c.584 0 1.1456.0449 1.7072.1347.6963.0899 1.3927.2471 2.0665.4493 1.0558-9.1873 8.828-16.3081 18.3298-16.3081 10.2654 0 18.4868 8.2439 18.5093 18.487 0 4.7846-1.7743 9.0975-4.6947 12.3771-3.3919-2.8304-8.4684-4.7172-13.8146-4.7172-2.5159 0-5.3686.5391-8.0193 1.4825.1573.8536.2471 1.7297.2471 2.6057 0 2.9427-.921 5.7056-2.4709 8.0193 3.0774 1.5948 6.5816 2.5383 10.2656 2.5383Zm-.0225-18.5095c4.3129 0 7.57-3.7288 7.57-8.4236 0-4.4251-3.3245-8.2663-7.57-8.2663-4.223 0-7.57 3.8412-7.57 8.2663 0 4.6948 3.2796 8.4236 7.57 8.4236ZM11.4112 51.4587c6.2671 0 11.4112-5.1215 11.4112-11.4112 0-6.2447-5.1441-11.4112-11.4112-11.4112C5.1665 28.6363 0 33.8028 0 40.0475c0 6.2897 5.1665 11.4112 11.4112 11.4112Zm0-9.6141c-.7413 0-1.2804-.4942-1.3029-1.2355l-.1797-6.1998c-.0224-.876.5841-1.4825 1.4826-1.4825.9209 0 1.505.6065 1.4825 1.4825l-.1797 6.1998c-.0224.7413-.5391 1.2355-1.3028 1.2355Zm0 5.3686c-1.0109 0-1.842-.8311-1.842-1.842 0-1.0108.8311-1.8419 1.842-1.8419 1.0333 0 1.8419.8311 1.8419 1.8419 0 1.0109-.8086 1.842-1.8419 1.842Z" />
+                ) : (
+                  <path d="M33.7169 50.6051C45.9141 50.6051 56 40.4968 56 28.2994 56 16.1245 45.892 5.9937 33.6944 5.9937 22.418 5.9937 12.9611 14.6419 11.5909 25.5365c.584 0 1.1456.0449 1.7072.1347.6963.0899 1.3927.2471 2.0665.4493 1.0558-9.1873 8.828-16.3081 18.3298-16.3081 10.2654 0 18.4868 8.2439 18.5093 18.487 0 4.7846-1.7743 9.0975-4.6947 12.3771-3.3919-2.8304-8.4684-4.7172-13.8146-4.7172-2.5159 0-5.3686.5391-8.0193 1.4825.1573.8536.2471 1.7297.2471 2.6057 0 2.9427-.921 5.7056-2.4709 8.0193 3.0774 1.5948 6.5816 2.5383 10.2656 2.5383Zm-.0225-18.5095c4.3129 0 7.57-3.7288 7.57-8.4236 0-4.4251-3.3245-8.2663-7.57-8.2663-4.223 0-7.57 3.8412-7.57 8.2663 0 4.6948 3.2796 8.4236 7.57 8.4236ZM11.4112 51.4587c6.2671 0 11.4112-5.1215 11.4112-11.4112 0-6.2447-5.1441-11.4112-11.4112-11.4112C5.1665 28.6363 0 33.8028 0 40.0475c0 6.2897 5.1665 11.4112 11.4112 11.4112Zm-1.3478-4.7172c-.3594 0-.8087-.1573-1.1007-.4717L4.6498 41.5301c-.1572-.1797-.2695-.5616-.2695-.8761 0-.7637.6065-1.3702 1.3702-1.3702.4493 0 .8087.2022 1.0558.4717l3.1897 3.4593 5.9527-8.2439c.2471-.3594.6514-.6065 1.1456-.6065.7413 0 1.3927.584 1.3927 1.3478 0 .2471-.1123.5391-.3145.8311l-6.9635 9.6815c-.2246.3145-.6739.5167-1.1456.5167Z" />
+                )}
+              </svg>
+            }
+            label="Participants experiencing connectivity issues"
+            tone={connectivityIssueCount === 0 ? "good" : connectedParticipantCount === 0 ? "poor" : "warning"}
+            value={String(connectivityIssueCount)}
+          />
+        </div>
+        <div className="healthActions">
+          <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={handleAnalyzeAll} type="button">
+            Run full analysis
+          </button>
+          <p>Deep diagnostic analysis of all participants and network path.</p>
+        </div>
+      </section>
+
+      <section className="panel participantsPanel">
+        <div className="sectionTitleRow">
+          <div>
+            <h2>Meeting Participants</h2>
+          </div>
+          <div className="buttonRow inlineButtons">
+            <button className="secondaryButton" disabled={isLoading} onClick={onInvite} type="button">
+              Invite
+            </button>
+          </div>
+        </div>
+
+        <div className="tableWrap">
+          <table className="participantTable">
+            <colgroup>
+              <col className="expandColumn" />
+              <col className="participantColumn" />
+              <col className="scoreColumn" />
+              <col className="signalColumn" />
+              <col className="signalColumn" />
+              <col className="signalColumn" />
+              <col className="actionsColumn" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th aria-label="Expand participant telemetry"></th>
+                <th>Participant</th>
+                <th><span className="scoreHeaderLabel">Signal Score</span></th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={deviceDivIcon} alt="" aria-hidden="true" />
+                    <span>Device</span>
+                  </span>
+                </th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={workspaceDivIcon} alt="" aria-hidden="true" />
+                    <span>Workspace</span>
+                  </span>
+                </th>
+                <th className="centeredSignalColumn">
+                  <span className="participantHeaderLabel">
+                    <img src={networkDivIcon} alt="" aria-hidden="true" />
+                    <span>Network</span>
+                  </span>
+                </th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participants.map((participant) => {
+                const analysisRemainingMs = getAnalysisRemainingMs(participant, nowMs);
+                const hasActiveAnalysisSession = analysisRemainingMs > 0;
+                const hasData = participant.clientDataStatus === "active";
+                const isExpanded = expandedParticipantIds.has(participant.userId);
+                const telemetry = hasActiveAnalysisSession
+                  ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
+                  : null;
+                const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
+                const analysisCoversParticipant = Boolean(telemetry);
+
+                return (
+                  <React.Fragment key={participant.userId}>
+                    <tr>
+                      <td className="expandCell">
+                        <button
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} telemetry for ${getParticipantName(participant)}`}
+                          className="expandButton"
+                          onClick={() => toggleParticipantTelemetry(participant.userId)}
+                          type="button"
+                        >
+                          <span className={`chevron ${isExpanded ? "chevronUp" : "chevronRight"}`} aria-hidden="true" />
+                        </button>
+                      </td>
+                      <td>
+                        <div className="participantIdentity">
+                          <span className="avatarBubble smallAvatar" aria-hidden="true">
+                            {getInitials(participant.displayName, participant.email)}
+                          </span>
+                          <div>
+                            <strong className="participantName" title={participant.email ?? getParticipantName(participant)}>
+                              {getParticipantName(participant)}
+                            </strong>
+                            <span>{formatParticipantMeetingRole(participant.meetingRole)}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="scoreCell">
+                        <CompactSignalScoreDisplay
+                          score={participant.signalScore}
+                          overallStatus={participant.overallStatus}
+                          hasData={hasData}
+                        />
+                      </td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
+                      <td className="statusLabelCell">
+                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                          {getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null)}
+                        </span>
+                      </td>
+                      <td>
+                        {hasActiveAnalysisSession ? (
+                          <span className="analysisSessionStatus">
+                            <span>Analysis in progress</span>
+                            <time>{formatAnalysisCountdown(analysisRemainingMs)}</time>
+                          </span>
+                        ) : hasData ? (
+                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => handleAnalyzeUser(participant.userId)} type="button">
+                            Analyze
+                          </button>
+                        ) : (
+                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={onInvite} type="button">
+                            Prompt
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <ParticipantTelemetryDetail
+                        hasActiveAnalysisSession={hasActiveAnalysisSession}
+                        hasData={hasData || hasActiveAnalysisSession}
+                        issues={issues}
+                        signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
+                        signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
+                        signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingIds.has(participant.userId)}
+                        telemetry={telemetry}
+                      />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
         <div className="serviceStatusCard">
           <img className="teamsMark" src={microsoftTeamsLogo} alt="Microsoft Teams" />
@@ -3960,183 +4208,6 @@ function Dashboard({
           </div>
         </div>
       </section>
-
-      <section className="panel participantsPanel">
-        <div className="sectionTitleRow">
-          <div>
-            <h2>Meeting Participants</h2>
-          </div>
-          <div className="buttonRow inlineButtons">
-            <button className="secondaryButton" disabled={isLoading} onClick={onInvite} type="button">
-              Invite
-            </button>
-            <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={onAnalyzeAll} type="button">
-              Run full analysis
-            </button>
-          </div>
-        </div>
-
-        <div className="tableWrap">
-          <table className="participantTable">
-            <colgroup>
-              <col className="expandColumn" />
-              <col className="participantColumn" />
-              <col className="scoreColumn" />
-              <col className="signalColumn" />
-              <col className="signalColumn" />
-              <col className="signalColumn" />
-              <col className="actionsColumn" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th aria-label="Expand participant telemetry"></th>
-                <th>Participant</th>
-                <th><span className="scoreHeaderLabel">Signal Score</span></th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={deviceDivIcon} alt="" aria-hidden="true" />
-                    <span>Device</span>
-                  </span>
-                </th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={workspaceDivIcon} alt="" aria-hidden="true" />
-                    <span>Workspace</span>
-                  </span>
-                </th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={networkDivIcon} alt="" aria-hidden="true" />
-                    <span>Network</span>
-                  </span>
-                </th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {participants.map((participant) => {
-                const analysisRemainingMs = getAnalysisRemainingMs(participant, nowMs);
-                const hasActiveAnalysisSession = analysisRemainingMs > 0;
-                const hasData = participant.clientDataStatus === "active";
-                const isExpanded = expandedParticipantId === participant.userId;
-                const telemetry = hasActiveAnalysisSession
-                  ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
-                  : null;
-                const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
-                const analysisCoversParticipant = Boolean(telemetry);
-
-                return (
-                  <React.Fragment key={participant.userId}>
-                    <tr>
-                      <td className="expandCell">
-                        <button
-                          aria-expanded={isExpanded}
-                          aria-label={`${isExpanded ? "Collapse" : "Expand"} telemetry for ${getParticipantName(participant)}`}
-                          className="expandButton"
-                          onClick={() => setExpandedParticipantId(isExpanded ? null : participant.userId)}
-                          type="button"
-                        >
-                          <span className={`chevron ${isExpanded ? "chevronUp" : "chevronRight"}`} aria-hidden="true" />
-                        </button>
-                      </td>
-                      <td>
-                        <div className="participantIdentity">
-                          <span className="avatarBubble smallAvatar" aria-hidden="true">
-                            {getInitials(participant.displayName, participant.email)}
-                          </span>
-                          <div>
-                            <strong className="participantName" title={participant.email ?? getParticipantName(participant)}>
-                              {getParticipantName(participant)}
-                            </strong>
-                            <span>{formatParticipantMeetingRole(participant.meetingRole)}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="scoreCell">
-                        <CompactSignalScoreDisplay
-                          score={participant.signalScore}
-                          overallStatus={participant.overallStatus}
-                          hasData={hasData}
-                        />
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td>
-                        {hasActiveAnalysisSession ? (
-                          <span className="analysisSessionStatus">
-                            <span>Analysis in progress</span>
-                            <time>{formatAnalysisCountdown(analysisRemainingMs)}</time>
-                          </span>
-                        ) : hasData ? (
-                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => onAnalyzeUser(participant.userId)} type="button">
-                            Analyze
-                          </button>
-                        ) : (
-                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={onInvite} type="button">
-                            Prompt
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <ParticipantTelemetryDetail
-                        hasActiveAnalysisSession={hasActiveAnalysisSession}
-                        hasData={hasData || hasActiveAnalysisSession}
-                        issues={issues}
-                        signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
-                        signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
-                        signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingId === participant.userId}
-                        telemetry={telemetry}
-                      />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="panel meetingHealthPanel">
-        <div className={`healthDial health-${aggregateTone}`}>
-          <span className="dialIcon" aria-hidden="true">ST</span>
-          <strong>{aggregateLabel}</strong>
-        </div>
-        <div className="aggregateScore">
-          <span>Aggregate Signal Score</span>
-          <strong>{aggregateScore ?? "-"}</strong>
-          <span>/ 100</span>
-        </div>
-        <div className="meetingHealthCopy">
-          <p>{dashboardSummary}</p>
-          <p>{participantSummary}</p>
-          <div className="healthBadges">
-            <span className={`semanticBadge ${teamsStatusMeta.className}`}>Teams: {teamsStatusMeta.label}</span>
-            <span className="semanticBadge statusOperational">
-              {goodParticipants} of {participants.length} Participants Good
-            </span>
-          </div>
-        </div>
-        <div className="healthActions">
-          <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={onAnalyzeAll} type="button">
-            Run full analysis
-          </button>
-          <p>Deep diagnostic analysis of all participants and network path.</p>
-        </div>
-      </section>
       {selectedIncident ? (
         <IncidentDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
       ) : null}
@@ -4155,6 +4226,28 @@ function Dashboard({
         />
       )}
     </main>
+  );
+}
+
+function MeetingHealthMetric({
+  icon,
+  label,
+  tone,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: React.ReactNode;
+  tone: "good" | "warning" | "poor";
+  value: string;
+}) {
+  return (
+    <div className="meetingHealthMetric">
+      <span className={`meetingHealthMetricIcon meetingHealthMetric-${tone}`} aria-hidden="true">
+        {icon}
+      </span>
+      <strong className={`meetingHealthMetricValue meetingHealthMetric-${tone}`}>{value}</strong>
+      <span className="meetingHealthMetricLabel">{label}</span>
+    </div>
   );
 }
 
