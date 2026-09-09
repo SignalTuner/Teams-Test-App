@@ -1,3 +1,4 @@
+import TemporaryActivationCode, { ActivationContext } from "./TemporaryActivationCode";
 import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
 
@@ -89,10 +90,7 @@ type PendingTeamsSsoAccountCreation = {
   user: CurrentUser;
 };
 
-type ActivationCodeResponse = {
-  activationCode?: string;
-  ActivationCode?: string;
-};
+
 
 type TeamsMeetingContext = {
   teamsMeetingId: string;
@@ -1442,10 +1440,7 @@ function isProfileRequired(response: AuthResponse, user: CurrentUser): boolean {
   );
 }
 
-function normalizeActivationCodeResponse(value: unknown): string | null {
-  const record = asRecord(value);
-  return readString(record, "activationCode", "ActivationCode", "userActivationCode", "UserActivationCode");
-}
+
 
 function mergeCurrentUser(primary: CurrentUser, fallback: CurrentUser | null): CurrentUser {
   if (!fallback) {
@@ -1877,54 +1872,6 @@ function TeamsAuthButton({
       {isBusy ? <Spinner /> : <img className="teamsGlyph" src={microsoftTeamsLogo} alt="" aria-hidden="true" />}
       <span>{isBusy ? "Signing you in with Microsoft Teams..." : label}</span>
     </button>
-  );
-}
-
-function CopyableActivationCode({
-  activationCode,
-  onCopied,
-}: {
-  activationCode: string;
-  onCopied?: () => void;
-}) {
-  const [copyStatus, setCopyStatus] = React.useState<"idle" | "copied" | "failed">("idle");
-  const codeIsAvailable = activationCode !== "Loading..." && activationCode !== "Not available";
-
-  const copyActivationCode = async () => {
-    if (!codeIsAvailable) {
-      return;
-    }
-
-    try {
-      await window.navigator.clipboard.writeText(activationCode);
-      setCopyStatus("copied");
-      onCopied?.();
-      window.setTimeout(() => setCopyStatus("idle"), 1800);
-    } catch {
-      setCopyStatus("failed");
-      window.setTimeout(() => setCopyStatus("idle"), 2600);
-    }
-  };
-
-  return (
-    <div className="copyableCodeWrap">
-      <button
-        aria-label={codeIsAvailable ? "Copy desktop client activation code" : "Desktop client activation code unavailable"}
-        className="copyableCodeButton"
-        disabled={!codeIsAvailable}
-        onClick={() => void copyActivationCode()}
-        title={codeIsAvailable ? "Copy activation code" : undefined}
-        type="button"
-      >
-        <strong>{activationCode}</strong>
-        <span className="copyGlyph" aria-hidden="true" />
-      </button>
-      {copyStatus !== "idle" && (
-        <span className={`copyStatus copyStatus-${copyStatus}`} role="status">
-          {copyStatus === "copied" ? "Copied" : "Copy failed"}
-        </span>
-      )}
-    </div>
   );
 }
 
@@ -2742,21 +2689,19 @@ function CompleteProfilePage({
 function ClientPrompt({
   activationCodeError,
   isLoading,
-  user,
   onContinue,
   onRefresh,
   onSignOut,
 }: {
   activationCodeError: string | null;
   isLoading: boolean;
-  user: CurrentUser;
   onContinue: () => void;
   onRefresh: () => Promise<void>;
   onSignOut: () => void;
 }) {
   const downloadUrl = getDownloadUrl();
   const browserLaunchUrl = "https://www.signaltuner.com/Launch.html";
-  const activationCode = user.activationCode?.trim() || "Loading...";
+
   const [rapidPollingEndsAt, setRapidPollingEndsAt] = React.useState<number | null>(null);
   const onRefreshRef = React.useRef(onRefresh);
   const refreshInFlightRef = React.useRef(false);
@@ -2901,7 +2846,7 @@ function ClientPrompt({
           <h2>Your activation code</h2>
           <p>Use this code in the desktop client.</p>
         </div>
-        <CopyableActivationCode activationCode={activationCode} onCopied={handleActivationCodeCopied} />
+        <TemporaryActivationCode onCopied={handleActivationCodeCopied} />
         {activationCodeError && <p className="activationError">{activationCodeError}</p>}
 
         <div className="desktopPreview" aria-label="Illustration of where to enter the activation code">
@@ -3238,7 +3183,7 @@ function AccountPage({
   const lastNameRef = React.useRef<HTMLInputElement | null>(null);
   const emailRef = React.useRef<HTMLInputElement | null>(null);
   const subscriptionPlan = user.subscriptionPlan?.trim() || "Free";
-  const activationCode = user.activationCode?.trim() || "Not available";
+
   const hasPassword = Boolean(user.hasPassword);
 
   React.useEffect(() => {
@@ -3471,7 +3416,7 @@ function AccountPage({
         <aside className="settingsSection accountMetaSection">
           <div className="activationCodeBlock accountActivationCode">
             <span>Desktop client activation code</span>
-            <CopyableActivationCode activationCode={activationCode} />
+            <TemporaryActivationCode />
           </div>
           <div className="fieldGroup">
             <label htmlFor="account-organization">Organization</label>
@@ -4458,32 +4403,6 @@ export default function App() {
     };
   }, []);
 
-  const mergeActivationCode = React.useCallback((activationCode: string | null) => {
-    if (!activationCode) {
-      return;
-    }
-
-    setDashboard((current) =>
-      current
-        ? {
-            ...current,
-            currentUser: {
-              ...current.currentUser,
-              activationCode,
-            },
-          }
-        : current
-    );
-    setAccountUser((current) =>
-      current
-        ? {
-            ...current,
-            activationCode,
-          }
-        : current
-    );
-  }, []);
-
   const mergeCredits = React.useCallback((credits: number) => {
     setAccountUser((current) =>
       current
@@ -4530,20 +4449,6 @@ export default function App() {
       return account;
     },
     [apiBaseUrl]
-  );
-
-  const refreshActivationCode = React.useCallback(
-    async (token: string) => {
-      const activationCode = normalizeActivationCodeResponse(
-        await fetchJson<ActivationCodeResponse>(`${apiBaseUrl}/api/User/activation-code`, {
-          headers: buildAuthHeaders(token),
-        })
-      );
-
-      mergeActivationCode(activationCode);
-      return activationCode;
-    },
-    [apiBaseUrl, mergeActivationCode]
   );
 
   const refreshDashboard = React.useCallback(
@@ -4780,26 +4685,6 @@ export default function App() {
         setBusyState("idle");
       });
   }, [dashboard, joinMeetingSession, meetingContext, refreshAccountInfo, sessionToken]);
-
-  React.useEffect(() => {
-    if (!dashboard || !sessionToken) {
-      return;
-    }
-
-    const currentUser = mergeCurrentUser(dashboard.currentUser, accountUser);
-
-    if (!currentUser.clientIsActive && !currentUser.activationCode) {
-      setIsLoading(true);
-      refreshActivationCode(sessionToken)
-        .then((activationCode) => {
-          setActivationCodeError(activationCode ? null : "Unable to load your activation code.");
-        })
-        .catch((caught) => {
-          setActivationCodeError(caught instanceof Error ? caught.message : String(caught));
-        })
-        .finally(() => setIsLoading(false));
-    }
-  }, [accountUser, dashboard, refreshActivationCode, sessionToken]);
 
   React.useEffect(() => {
     if (!dashboard || !sessionToken) {
@@ -5078,20 +4963,11 @@ export default function App() {
     setActivationCodeError(null);
 
     try {
-      const refreshedDashboard = await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-      const refreshedUser = mergeCurrentUser(refreshedDashboard.currentUser, accountUser);
-
-      if (!refreshedUser.clientIsActive && !refreshedUser.activationCode) {
-        const activationCode = await refreshActivationCode(sessionToken);
-
-        if (!activationCode) {
-          setActivationCodeError("Unable to load your activation code.");
-        }
-      }
+      await refreshDashboard(dashboard.meetingSessionId, sessionToken);
     } catch (caught) {
       setActivationCodeError(caught instanceof Error ? caught.message : "Unable to refresh desktop telemetry status.");
     }
-  }, [accountUser, dashboard, refreshActivationCode, refreshDashboard, sessionToken]);
+  }, [dashboard, refreshDashboard, sessionToken]);
 
   const addTestingCredit = React.useCallback(async () => {
     if (!sessionToken) {
@@ -5327,13 +5203,12 @@ export default function App() {
   const shouldShowClientPrompt = !currentUser.clientIsActive && !isClientPromptDismissed;
 
   return (
-    <>
+    <ActivationContext.Provider value={{ apiBaseUrl, token: sessionToken }}>
       {shouldShowClientPrompt && (
         <main className="pageShell">
           <ClientPrompt
             activationCodeError={activationCodeError}
             isLoading={isLoading}
-            user={currentUser}
             onContinue={() => {
               setActivePage("dashboard");
               setIsClientPromptDismissed(true);
@@ -5369,6 +5244,6 @@ export default function App() {
           themePreference={themePreference}
         />
       )}
-    </>
+    </ActivationContext.Provider>
   );
 }

@@ -2569,6 +2569,12 @@ input:read-only {
   padding: 24px 34px;
 }
 
+.temporaryActivationCode { margin: 16px 0; }
+.temporaryActivationCodeValue { display: inline-block; margin-right: 12px; font-size: 24px; letter-spacing: 3px; user-select: all; }
+.temporaryActivationCode button { padding: 10px 16px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.temporaryActivationCode button:disabled { opacity: .6; cursor: wait; }
+.temporaryActivationCode p { font-size: 14px; margin: 8px 0; }
+
 .meetingScoreDisplay {
   display: grid;
   justify-items: center;
