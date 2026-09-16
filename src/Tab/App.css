@@ -2179,7 +2179,7 @@ input:read-only {
   white-space: nowrap;
 }
 
-.compactSignalScore-excellent {
+.compactSignalScore-healthy {
   color: #3BB537;
 }
 
@@ -2244,7 +2244,7 @@ input:read-only {
   text-align: center;
 }
 
-.telemetryStatus-excellent {
+.telemetryStatus-healthy {
   color: #3BB537;
 }
 

@@ -33,8 +33,8 @@ import workspaceWifiStrengthIcon from "./assets/workspace-wifi-strength-icon.svg
 
 type AuthProvider = "teams_sso" | "google" | "github" | "email_magic_code";
 type ClientDataStatus = "active" | "inactive" | "no_data";
-type AnalysisStatus = "Excellent" | "Fair" | "Poor" | "Critical" | "Offline" | "No data" | string;
-type SignalDisplayStatus = "Excellent" | "Fair" | "Poor" | "Critical" | "Offline" | "Unknown";
+type AnalysisStatus = "Healthy" | "Fair" | "Poor" | "Critical" | "Offline" | "No data" | string;
+type SignalDisplayStatus = "Healthy" | "Fair" | "Poor" | "Critical" | "Offline" | "Unknown";
 type TeamsServiceStatus = "operational" | "activeIncident" | "outage";
 
 type CurrentUser = {
@@ -788,13 +788,13 @@ function getSignalTone(score: number | null | undefined): "good" | "fair" | "poo
   return "poor";
 }
 
-function getSignalDisplayStatusFromScore(score: number | null | undefined): "Excellent" | "Fair" | "Poor" | "Critical" | "Unknown" {
+function getSignalDisplayStatusFromScore(score: number | null | undefined): "Healthy" | "Fair" | "Poor" | "Critical" | "Unknown" {
   if (score === null || score === undefined || Number.isNaN(score)) {
     return "Unknown";
   }
 
   if (score >= 90) {
-    return "Excellent";
+    return "Healthy";
   }
 
   if (score >= 80) {
@@ -808,11 +808,11 @@ function getSignalDisplayStatusFromScore(score: number | null | undefined): "Exc
   return "Critical";
 }
 
-function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): "Excellent" | "Fair" | "Poor" | "Critical" | "Unknown" {
+function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): "Healthy" | "Fair" | "Poor" | "Critical" | "Unknown" {
   const normalizedStatus = status?.trim().toLowerCase();
 
-  if (normalizedStatus === "excellent") {
-    return "Excellent";
+  if ((normalizedStatus === "healthy" || normalizedStatus === "excellent")) {
+    return "Healthy";
   }
 
   if (normalizedStatus === "fair") {
@@ -827,14 +827,15 @@ function getSignalStatusLabel(status: AnalysisStatus | null | undefined, score: 
     return "Critical";
   }
 
+  if (normalizedStatus === "unknown" || normalizedStatus === "disconnected" || normalizedStatus === "offline") return "Unknown";
   return getSignalDisplayStatusFromScore(score);
 }
 
 function getSignalOverallStatusLabel(status: AnalysisStatus | null | undefined, score: number | null | undefined): SignalDisplayStatus {
   const normalizedStatus = status?.trim().toLowerCase();
 
-  if (normalizedStatus === "excellent") {
-    return "Excellent";
+  if ((normalizedStatus === "healthy" || normalizedStatus === "excellent")) {
+    return "Healthy";
   }
 
   if (normalizedStatus === "fair") {
@@ -858,7 +859,7 @@ function getSignalOverallStatusLabel(status: AnalysisStatus | null | undefined, 
 
 function getSignalStatusColor(status: SignalDisplayStatus): string {
   switch (status) {
-    case "Excellent":
+    case "Healthy":
       return "#3BB537";
     case "Fair":
       return "#F9AE00";
@@ -989,7 +990,7 @@ function getTelemetryValueTitle(value: string): string | undefined {
 
 const signalMetricColors = {
   unknown: "#6b96c1",
-  excellent: "#3BB537",
+  healthy: "#3BB537",
   fair: "#F9AE00",
   poor: "#FC6F20",
   critical: "#EC2F3E",
@@ -1016,7 +1017,7 @@ function getTelemetryInsightColor(severity: TelemetryInsight["severity"]): strin
     case "Fair":
       return signalMetricColors.fair;
     default:
-      return signalMetricColors.excellent;
+      return signalMetricColors.healthy;
   }
 }
 
@@ -1028,6 +1029,8 @@ function buildTelemetryInsights(telemetry: TelemetryRecord | null): {
   const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
   const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
   const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
+  const wifiStatus = getTelemetryValue(telemetry, ["wifiStatus", "workspaceStatus", "signal_wifi_status", "SignalWifiStatus"]);
+  const wifiColor = getWifiStrengthMetricColor(wifiStrength, wifiStatus);
   const download = getTelemetryNumber(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed", "SignalDownloadSpeed"]);
   const upload = getTelemetryNumber(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed", "SignalUploadSpeed"]);
   const latency = getTelemetryNumber(telemetry, ["latency", "ping", "signal_latency", "latencyMs", "SignalPing"]);
@@ -1052,12 +1055,16 @@ function buildTelemetryInsights(telemetry: TelemetryRecord | null): {
     categories.push({ title: "Device", text: "Your device currently has ample processing and memory capacity for a video meeting.", severity: "Informational" });
   }
 
-  if (wifiStrength !== null && wifiStrength < 40) {
-    categories.push({ title: "Workspace", text: "Your Wi-Fi connection is consistently weak rather than experiencing a temporary signal drop.", severity: "Poor" });
+  if (wifiColor === signalMetricColors.critical) {
+    categories.push({ title: "Workspace", text: "Your Wi-Fi signal is critically weak.", severity: "Critical" });
     recommendations.push({ text: "Move closer to your Wi-Fi access point or improve Wi-Fi coverage in this workspace.", severity: "Poor", priority: 88 });
-  } else if (wifiStrength !== null && wifiStrength < 55) {
+  } else if (wifiColor === signalMetricColors.poor) {
     categories.push({ title: "Workspace", text: "Your Wi-Fi signal is weak. Distance or obstructions between your device and access point may be reducing connection stability.", severity: "Poor" });
     recommendations.push({ text: "Move closer to the access point or switch to a more reliable Wi-Fi band or access point.", severity: "Poor", priority: 84 });
+  } else if (wifiColor === signalMetricColors.unknown) {
+    categories.push({ title: "Workspace", text: "Wi-Fi signal measurement is unavailable.", severity: "Informational" });
+  } else if (wifiColor === signalMetricColors.fair) {
+    categories.push({ title: "Workspace", text: "Your Wi-Fi signal is below the healthy range.", severity: "Fair" });
   } else {
     categories.push({ title: "Workspace", text: "Your workspace connection currently provides suitable Wi-Fi coverage for a video meeting.", severity: "Informational" });
   }
@@ -1067,7 +1074,7 @@ function buildTelemetryInsights(telemetry: TelemetryRecord | null): {
     const criticalPacketLoss = packetLoss !== null && packetLoss > 5.9;
     const criticalLatency = latency !== null && latency > 99;
     const poorBandwidth = (download !== null && download < 0.8) || (upload !== null && upload < 1.2);
-    if (criticalPacketLoss && wifiStrength !== null && wifiStrength >= 70) {
+    if (criticalPacketLoss && wifiColor === signalMetricColors.healthy) {
       categories.push({ title: "Network", text: "Your Wi-Fi signal is strong, so wireless coverage is unlikely to be the primary source of your connection problem.", severity: "Critical" });
       recommendations.push({ text: "Check router or ISP performance and temporarily test without the VPN if one is connected.", severity: "Critical", priority: 90 });
     } else if (criticalLatency && vpn === "Connected") {
@@ -1113,7 +1120,7 @@ function getCpuMetricColor(value: number | null): string {
     return signalMetricColors.fair;
   }
 
-  return signalMetricColors.excellent;
+  return signalMetricColors.healthy;
 }
 
 function getMemoryMetricColor(value: number | null): string {
@@ -1133,36 +1140,29 @@ function getMemoryMetricColor(value: number | null): string {
     return signalMetricColors.fair;
   }
 
-  return signalMetricColors.excellent;
+  return signalMetricColors.healthy;
 }
 
-function getWifiStrengthMetricColor(value: number | null): string {
-  if (value === null || value === 0) {
-    return signalMetricColors.unknown;
-  }
-
-  if (value >= 90) {
-    return signalMetricColors.excellent;
-  }
-
-  if (value >= 80) {
-    return signalMetricColors.fair;
-  }
-
-  if (value >= 70) {
-    return signalMetricColors.poor;
-  }
-
+function getWifiStrengthMetricColor(value: number | null, status?: string): string {
+  const normalized = status?.trim().toLowerCase();
+  if (normalized === "excellent" || normalized === "healthy") return signalMetricColors.healthy;
+  if (normalized === "fair") return signalMetricColors.fair;
+  if (normalized === "poor") return signalMetricColors.poor;
+  if (normalized === "critical") return signalMetricColors.critical;
+  if (normalized === "unknown" || normalized === "disconnected" || normalized === "offline" || value === null) return signalMetricColors.unknown;
+  if (value > 60) return signalMetricColors.healthy;
+  if (value > 45) return signalMetricColors.fair;
+  if (value > 30) return signalMetricColors.poor;
   return signalMetricColors.critical;
 }
 
-function getWifiBandMetricColor(value: string, wifiStrength: number | null): string {
+function getWifiBandMetricColor(value: string, wifiStrength: number | null, wifiStatus?: string): string {
   if (value === "5 GHz" || value === "6 GHz") {
-    return wifiStrength !== null && wifiStrength >= 90 ? signalMetricColors.excellent : signalMetricColors.fair;
+    return getWifiStrengthMetricColor(wifiStrength, wifiStatus) === signalMetricColors.healthy ? signalMetricColors.healthy : signalMetricColors.fair;
   }
 
   if (value === "2.4 GHz") {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   return signalMetricColors.unknown;
@@ -1170,7 +1170,7 @@ function getWifiBandMetricColor(value: string, wifiStrength: number | null): str
 
 function getVpnMetricColor(value: string): string {
   if (value === "Not Connected") {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   if (value === "Connected") {
@@ -1186,7 +1186,7 @@ function getDownloadMetricColor(value: number | null): string {
   }
 
   if (value >= 3) {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   if (value >= 1.8) {
@@ -1206,7 +1206,7 @@ function getUploadMetricColor(value: number | null): string {
   }
 
   if (value >= 3.8) {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   if (value >= 2.6) {
@@ -1226,7 +1226,7 @@ function getLatencyMetricColor(value: number | null): string {
   }
 
   if (value <= 20) {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   if (value <= 50) {
@@ -1246,7 +1246,7 @@ function getPacketLossMetricColor(value: number | null): string {
   }
 
   if (value <= 1.9) {
-    return signalMetricColors.excellent;
+    return signalMetricColors.healthy;
   }
 
   if (value <= 3.9) {
@@ -4219,6 +4219,8 @@ function ParticipantTelemetryDetail({
   const cpu = getTelemetryNumber(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"]);
   const memory = getTelemetryNumber(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"]);
   const wifiStrength = getTelemetryNumber(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"]);
+  const wifiStatus = getTelemetryValue(telemetry, ["wifiStatus", "workspaceStatus", "signal_wifi_status", "SignalWifiStatus"]);
+  const wifiColor = getWifiStrengthMetricColor(wifiStrength, wifiStatus);
   const download = getTelemetryNumber(telemetry, ["downloadSpeed", "signal_download_speed", "download_speed", "SignalDownloadSpeed"]);
   const upload = getTelemetryNumber(telemetry, ["uploadSpeed", "signal_upload_speed", "upload_speed", "SignalUploadSpeed"]);
   const latency = getTelemetryNumber(telemetry, ["latency", "ping", "signal_latency", "latencyMs", "SignalPing"]);
@@ -4235,16 +4237,16 @@ function ParticipantTelemetryDetail({
       metrics: [
         { label: "CPU", icon: deviceCpuIcon, value: formatTelemetryMeasurement(telemetry, ["cpu", "cpuUsage", "signal_cpu", "cpu_percent", "SignalCPU"], "%"), color: getCpuMetricColor(cpu) },
         { label: "Memory", icon: deviceMemoryIcon, value: formatTelemetryMeasurement(telemetry, ["memory", "memoryUsage", "signal_memory", "memory_percent", "SignalMemory"], "%"), color: getMemoryMetricColor(memory) },
-        { label: "Processor", icon: deviceProcessorIcon, value: processor, color: processor === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
-        { label: "Cores", icon: deviceCoresIcon, value: cores, color: cores === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
+        { label: "Processor", icon: deviceProcessorIcon, value: processor, color: processor === "No data" ? signalMetricColors.unknown : signalMetricColors.healthy },
+        { label: "Cores", icon: deviceCoresIcon, value: cores, color: cores === "No data" ? signalMetricColors.unknown : signalMetricColors.healthy },
       ],
     },
     {
       title: "Workspace",
       metrics: [
-        { label: "Wi-Fi Strength", icon: workspaceWifiStrengthIcon, value: formatTelemetryMeasurement(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"], "%"), color: getWifiStrengthMetricColor(wifiStrength) },
-        { label: "Current Network", icon: workspaceCurrentNetworkIcon, value: currentNetwork, color: currentNetwork === "No data" ? signalMetricColors.unknown : signalMetricColors.excellent },
-        { label: "Frequency", icon: workspaceNetworkFrequencyIcon, value: frequency, color: getWifiBandMetricColor(frequency, wifiStrength) },
+        { label: "Wi-Fi Strength", icon: workspaceWifiStrengthIcon, value: wifiColor === signalMetricColors.unknown ? "Unknown" : formatTelemetryMeasurement(telemetry, ["wifiStrength", "wiFiStrength", "signal_wifi_strength", "wifi_strength", "SignalWifiStrength"], "%"), color: wifiColor },
+        { label: "Current Network", icon: workspaceCurrentNetworkIcon, value: currentNetwork, color: currentNetwork === "No data" ? signalMetricColors.unknown : signalMetricColors.healthy },
+        { label: "Frequency", icon: workspaceNetworkFrequencyIcon, value: frequency, color: getWifiBandMetricColor(frequency, wifiStrength, wifiStatus) },
         { label: "VPN", icon: workspaceVpnIcon, value: vpn, color: getVpnMetricColor(vpn) },
       ],
     },

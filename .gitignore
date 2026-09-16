@@ -16,3 +16,4 @@ node_modules/
 # build
 dist/
 AGENTS.md
+.codex-task-status.json
