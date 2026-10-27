@@ -88,6 +88,8 @@ a {
   padding: 0 24px 24px;
 }
 
+.dashboardAppearanceRow { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+
 .compactShell,
 .authShell {
   display: grid;
@@ -851,18 +853,6 @@ a {
   width: 20px;
   height: 20px;
   object-fit: contain;
-}
-
-.meetingPreviewDark {
-  display: none;
-}
-
-:root[data-teams-theme="dark"] .meetingPreviewLight {
-  display: none;
-}
-
-:root[data-teams-theme="dark"] .meetingPreviewDark {
-  display: block;
 }
 
 .setupStepIconButton {
@@ -1971,212 +1961,247 @@ input:read-only {
   color: var(--muted);
 }
 
-.tableWrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
+/* Match the website's meeting participant rows and per-person metric labels. */
 .participantsPanel {
-  --expand-column-width: 42px;
-  --participant-column-width: 30%;
-  --score-column-width: 96px;
-  --signal-column-width: 182px;
-  --signal-column-padding: 12px;
-  --actions-column-width: 108px;
+  padding: 0;
+  overflow: hidden;
 }
 
-.participantTable {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  min-width: 860px;
-}
-
-.participantTable .expandColumn {
-  width: var(--expand-column-width);
-}
-
-.participantTable .participantColumn {
-  width: var(--participant-column-width);
-}
-
-.participantTable .scoreColumn {
-  width: var(--score-column-width);
-}
-
-.participantTable .signalColumn {
-  width: var(--signal-column-width);
-}
-
-.participantTable .actionsColumn {
-  width: var(--actions-column-width);
-}
-
-.participantTable th,
-.participantTable td {
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-  text-align: left;
-  vertical-align: middle;
-}
-
-.participantTable th {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 400;
-  background: color-mix(in srgb, var(--notice) 68%, var(--panel));
-}
-
-.participantTable th.centeredSignalColumn,
-.participantTable td.statusLabelCell {
-  padding-left: var(--signal-column-padding);
-  padding-right: var(--signal-column-padding);
-  text-align: center;
-}
-
-.scoreHeaderLabel {
-  display: inline-block;
-  transform: translateX(15px);
-}
-
-.participantHeaderLabel {
-  display: inline-grid;
+.participantsToolbar {
+  display: flex;
   align-items: center;
-  justify-items: center;
-  gap: 5px;
-  color: #6B96C1;
-  line-height: 1.15;
-  white-space: nowrap;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 8px 28px;
+  border-bottom: 1px solid var(--line);
 }
 
-.participantHeaderLabel img {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
-  flex: 0 0 auto;
+.participantsToolbar h2,
+.meetingHealthPanel .meetingOverviewTitle {
+  margin: 0;
+  font-size: 19px;
+}
+
+.meetingOverviewTitle {
+  grid-column: 1 / -1;
+  padding-bottom: 16px;
+}
+
+.participantsToolbar p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.participantList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.participantListItem {
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+}
+
+.participantListItem:last-child {
+  border-bottom: 0;
+}
+
+.participantRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(280px, 1fr) 240px;
+  align-items: center;
+  gap: 24px;
+  padding: 25px 28px 25px 25px;
+}
+
+.participantsEmpty {
+  padding: 20px 28px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .participantIdentity {
   display: flex;
-  gap: 10px;
+  gap: 18px;
   align-items: center;
   min-width: 0;
 }
 
-.participantIdentity div {
-  display: grid;
-  gap: 2px;
+.participantIdentity > div {
   min-width: 0;
 }
 
-.participantName,
-.participantIdentity div span {
+.participantAvatar {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--notice);
+  color: var(--focus);
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.participantName {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.participantEmail {
+  margin: -2px 0 8px;
+  font-size: 12px;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.participantIdentity div span {
+.participantRole {
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--muted);
-  font-size: 0.86rem;
 }
 
-.participantIdentity .avatarBubble {
-  color: #FFFFFF;
-}
-
-.expandCell {
-  text-align: center;
-}
-
-.expandButton {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 0;
-  border-radius: 3px;
-  color: var(--ink);
-  background: transparent;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-.expandButton:hover {
-  background: var(--notice);
-}
-
-.scoreCell {
-  text-align: center;
-}
-
-.compactSignalScoreDisplay {
-  width: 72px;
-  min-height: 64px;
+.participantMetrics {
   display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  text-align: center;
 }
 
-.compactSignalScoreMeter {
-  width: 58px;
-  height: 42px;
-  display: block;
-  overflow: visible;
+.participantMetrics > div {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
 }
 
-.compactSignalScoreOuter,
-.compactSignalScoreTrack,
-.compactSignalScoreArc {
-  fill: none;
+.participantMetrics > div::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  border-left: 1px solid var(--line);
 }
 
-.compactSignalScoreOuter {
-  stroke: #DCDFE3;
-  stroke-width: 6;
-  stroke-miterlimit: 10;
-  stroke-dasharray: 0.5 13.78;
-  transform: translate(-11px, -10px);
+.participantMetrics > div:first-child::before {
+  left: -12px;
 }
 
-.compactSignalScoreTrack {
-  stroke: #F4F4F4;
-  stroke-width: 17;
+.participantMetrics dt {
+  margin-bottom: 10px;
+  font-size: 14.4px;
+  color: var(--muted);
 }
 
-.compactSignalScoreArc {
-  stroke-width: 17;
-  stroke-linecap: round;
-}
-
-.compactSignalScoreValue {
-  display: inline-flex;
-  align-items: baseline;
+.participantMetrics dd {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  color: currentColor;
-  font-size: 0.96rem;
-  font-weight: 600;
-  line-height: 1;
-  transform: translateX(-3px);
+  min-width: 0;
+  margin: 0;
+  font-size: 16.8px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.compactSignalScoreValue span:last-child {
-  margin-left: 1px;
-  font-size: 0.64rem;
+.participantActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  grid-column: 3;
+  min-width: 0;
+}
+
+.participantsToolbar .secondaryButton,
+.participantActions > button {
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--notice);
+  color: var(--ink);
+  font-size: 13px;
   font-weight: 700;
 }
 
+.participantInviteButton,
+.participantActions > button,
+.participantActions > .remoteAnalysisAction,
+.participantActions > .analysisSessionStatus {
+  width: 150px;
+  max-width: 100%;
+}
+
+.participantActions > .remoteAnalysisAction {
+  margin: 0;
+}
+
+.participantInviteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.participantInviteButton svg { flex-shrink: 0; }
+
+.participantActions > .remoteAnalysisAction > button {
+  width: 100%;
+}
+
+.compactSignalScoreDisplay {
+  width: 95px;
+  max-width: 100%;
+  margin-inline: auto;
+  /* Dark themes retain the website's white value on a dark surface. */
+  background: #1F2937;
+  border-radius: 8px;
+}
+
+.compactSignalScoreMeter {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.compactSignalScoreTrack,
+.compactSignalScoreArc {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.compactSignalScoreTrack {
+  stroke: #344053;
+}
+
+.compactSignalScoreArc {
+  stroke: currentColor;
+}
+
+.compactSignalScoreValue {
+  fill: #FFFFFF;
+  font-size: 17px;
+  font-weight: 600;
+}
+
 .compactSignalScoreStatus {
-  max-width: 72px;
-  overflow: hidden;
-  color: currentColor;
-  font-size: 0.72rem;
-  line-height: 1.1;
-  text-align: center;
-  text-overflow: ellipsis;
-  transform: translateX(-3px);
-  white-space: nowrap;
+  fill: currentColor;
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .compactSignalScore-healthy {
@@ -2196,23 +2221,30 @@ input:read-only {
 }
 
 .compactSignalScore-offline {
-  color: var(--muted);
+  color: #B8C2D4;
 }
 
 .compactSignalScore-unknown {
   color: #6B96C1;
 }
 
-:root[data-teams-theme="dark"] .compactSignalScoreTrack {
-  stroke: #344053;
+:root:not([data-teams-theme="dark"]):not([data-teams-theme="contrast"]) .compactSignalScoreDisplay {
+  background: transparent;
 }
 
-:root[data-teams-theme="dark"] .compactSignalScoreOuter {
-  stroke: #536075;
+:root:not([data-teams-theme="dark"]):not([data-teams-theme="contrast"]) .compactSignalScoreValue {
+  fill: var(--ink);
 }
 
-:root[data-teams-theme="contrast"] .compactSignalScoreTrack,
-:root[data-teams-theme="contrast"] .compactSignalScoreOuter {
+:root:not([data-teams-theme="dark"]):not([data-teams-theme="contrast"]) .compactSignalScoreTrack {
+  stroke: var(--line);
+}
+
+:root[data-teams-theme="contrast"] .compactSignalScoreDisplay {
+  background: #000000;
+}
+
+:root[data-teams-theme="contrast"] .compactSignalScoreTrack {
   stroke: #FFFFFF;
 }
 
@@ -2345,14 +2377,17 @@ input:read-only {
   font-variant-numeric: tabular-nums;
 }
 
-.telemetryDetailRow > td {
-  padding-top: 16px;
-  padding-bottom: 18px;
-  vertical-align: top;
+.telemetryDetailRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  padding: 20px 28px;
+  border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--notice) 52%, var(--panel));
 }
 
 .telemetryDetailLead {
+  min-width: 0;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.35;
@@ -2420,19 +2455,21 @@ input:read-only {
 }
 
 .telemetryDetailCell {
+  min-width: 0;
+  padding-left: 20px;
   border-left: 1px solid var(--line);
 }
 
-.telemetryDetailCell,
-.telemetryDetailActionCell {
-  text-align: center;
+.telemetryDetailCell h4 {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--muted);
 }
 
 .telemetryGroupMetrics {
   display: grid;
   gap: 12px;
-  width: max-content;
-  max-width: calc(var(--signal-column-width) - (var(--signal-column-padding) * 2));
+  width: 100%;
   min-width: 0;
   margin: 0 auto;
 }
@@ -2480,12 +2517,6 @@ input:read-only {
   display: grid;
   gap: 12px;
   padding: 14px 18px 16px;
-  background: color-mix(in srgb, var(--panel) 72%, var(--notice));
-}
-
-.telemetryInsightsRow > td {
-  padding: 0;
-  vertical-align: top;
   background: color-mix(in srgb, var(--panel) 72%, var(--notice));
 }
 
@@ -2563,10 +2594,12 @@ input:read-only {
 
 .meetingHealthPanel {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) minmax(190px, 240px);
+  grid-template-columns: 168px minmax(0, 1fr) minmax(152px, 192px);
   gap: 0;
   align-items: center;
-  padding: 24px 34px;
+  /* Scale content and spacing to 80% while keeping the panel responsive. */
+  padding: 19.2px 27.2px;
+  font-size: 0.8rem;
 }
 
 .temporaryActivationCode { margin: 16px 0; }
@@ -2578,42 +2611,20 @@ input:read-only {
 .meetingScoreDisplay {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding-right: 26px;
+  gap: 6.4px;
+  padding-right: 20.8px;
   border-right: 1px solid var(--line);
 }
 
 .meetingScoreLabel {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
 .meetingScoreDisplay .compactSignalScoreDisplay {
-  width: 144px;
-  min-height: 112px;
-  gap: 3px;
-}
-
-.meetingScoreDisplay .compactSignalScoreMeter {
-  width: 116px;
-  height: 84px;
-  transform: translateY(10px);
-}
-
-.meetingScoreDisplay .compactSignalScoreValue {
-  font-size: 2rem;
-  transform: translateX(-6px);
-}
-
-.meetingScoreDisplay .compactSignalScoreValue span:last-child {
-  font-size: 0.9rem;
-}
-
-.meetingScoreDisplay .compactSignalScoreStatus {
-  max-width: 144px;
-  font-size: 0.82rem;
-  transform: translateX(-6px);
+  width: 115.2px;
+  border-radius: 6.4px;
 }
 
 .meetingHealthMetrics {
@@ -2630,8 +2641,8 @@ input:read-only {
   align-content: center;
   justify-items: center;
   min-width: 0;
-  gap: 6px;
-  padding: 0 18px;
+  gap: 4.8px;
+  padding: 0 14.4px;
   text-align: center;
 }
 
@@ -2642,13 +2653,13 @@ input:read-only {
 .meetingHealthMetricIcon {
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
 }
 
 .meetingHealthMetricIcon svg {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -2658,8 +2669,8 @@ input:read-only {
 
 .meetingHealthMetricIcon svg.meetingHealthGroupIcon {
   display: block;
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   fill: currentColor;
   stroke: none;
 }
@@ -2675,19 +2686,23 @@ input:read-only {
 }
 
 .meetingHealthMetricValue {
-  font-size: 1.65rem;
+  font-size: 1.32rem;
   line-height: 1.1;
 }
 
 .meetingHealthMetricLabel {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.624rem;
   font-weight: 600;
   line-height: 1.3;
 }
 
 .meetingHealthMetric-good {
   color: var(--green);
+}
+
+.meetingHealthMetric-neutral {
+  color: #8AB4E1;
 }
 
 .meetingHealthMetric-warning {
@@ -2702,7 +2717,8 @@ input:read-only {
   grid-column: 3;
   justify-items: start;
   min-width: 0;
-  padding-left: 26px;
+  gap: 9.6px;
+  padding-left: 20.8px;
   border-left: 1px solid var(--line);
 }
 
@@ -2873,15 +2889,15 @@ input:read-only {
 
   .meetingHealthPanel {
     justify-items: stretch;
-    gap: 18px;
-    padding: 20px;
+    gap: 14.4px;
+    padding: 16px;
   }
 
   .meetingScoreDisplay {
     padding-right: 0;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    padding-bottom: 18px;
+    padding-bottom: 14.4px;
   }
 
   .meetingHealthMetrics {
@@ -2891,7 +2907,7 @@ input:read-only {
   }
 
   .meetingHealthMetric {
-    padding: 14px 0;
+    padding: 11.2px 0;
   }
 
   .meetingHealthMetric:not(:last-child) {
@@ -2901,7 +2917,7 @@ input:read-only {
 
   .healthActions {
     grid-column: auto;
-    padding: 18px 0 0;
+    padding: 14.4px 0 0;
     border-top: 1px solid var(--line);
     border-left: 0;
   }
@@ -2959,6 +2975,83 @@ input:read-only {
   .dataList,
   .telemetryGrid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1000px) {
+  .participantRow {
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 18px;
+  }
+
+  .participantMetrics {
+    grid-column: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .participantMetrics > div:nth-child(odd)::before {
+    content: none;
+  }
+
+  .participantActions {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .telemetryDetailRow {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .telemetryDetailLead {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .participantsToolbar {
+    padding: 16px 20px;
+    flex-wrap: wrap;
+  }
+
+  .participantRow {
+    padding: 20px 17px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .participantIdentity {
+    gap: 12px;
+  }
+
+  .participantMetrics {
+    gap: 20px;
+  }
+
+  .participantMetrics > div::before {
+    left: -10px;
+  }
+
+  .participantActions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: end;
+    width: min(100%, 240px);
+  }
+
+  .telemetryDetailRow {
+    padding: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .telemetryDetailCell {
+    padding: 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .participantListItem .telemetryInsightCategories {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

@@ -1,0 +1,48 @@
+/* Match the website meeting service-monitor row, using the Teams theme tokens. */
+.panel.teamsMeetingService { padding: 0; overflow: hidden; border-left: 3px solid var(--muted); background: var(--panel); }
+.teamsMeetingService[data-service-status="healthy"] { border-left-color: #3BB537; }
+.teamsMeetingService[data-service-status="incident"] { border-left-color: #F9AE00; }
+.teamsMeetingService[data-service-status="outage"] { border-left-color: #EC2F3E; }
+.teamsServiceRow { display: grid; grid-template-columns: minmax(160px, 1fr) auto auto; align-items: center; gap: 32px; width: 100%; padding: 25px 28px 25px 25px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.teamsServiceRow:disabled { cursor: default; }
+.teamsServiceRow:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.teamsServiceIdentity { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.teamsServiceLogo { display: grid; place-items: center; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; background: #fff; border: 1px solid #d5dfec; }
+.teamsServiceLogo img { width: 34px; height: 34px; object-fit: contain; }
+.teamsServiceName { display: block; margin: 0 0 8px; font-size: 18px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.teamsServiceStatus { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.teamsServiceStatus > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.teamsServiceStatus--healthy { color: #3BB537; }
+.teamsServiceStatus--incident { color: #F9AE00; }
+.teamsServiceStatus--outage { color: #EC2F3E; }
+.teamsServiceCount { justify-self: end; font-weight: 600; }
+.teamsServiceToggle { display: flex; align-items: center; gap: 12px; grid-column: 3; grid-row: 1; justify-self: end; min-height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 400; white-space: nowrap; cursor: pointer; }
+.teamsServiceRow:hover:not(:disabled) .teamsServiceToggle { color: var(--focus); }
+.teamsServiceRow:disabled .teamsServiceToggle { opacity: .65; cursor: default; }
+.teamsMeetingService a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.teamsServiceDisclosure { display: list-item; list-style: disclosure-closed inside; flex-shrink: 0; color: var(--focus); font-size: 19px; font-weight: 600; line-height: 1; pointer-events: none; }
+[aria-expanded="true"] > .teamsServiceDisclosure,
+.teamsServiceRow[aria-expanded="true"] .teamsServiceDisclosure { list-style-type: disclosure-open; }
+.teamsServiceIncidents { padding: 24px 28px; border-top: 1px solid var(--line); background: var(--notice); color: var(--muted); line-height: 1.6; }
+.teamsServiceIncidents h4 { margin: 0 0 20px; font-size: 16px; color: var(--ink); }
+.teamsServiceIncidents article { --incident-edge: var(--line); --incident-text: var(--muted); padding: 18px 20px; border: 1px solid var(--line); border-left: 4px solid var(--incident-edge); border-radius: 6px; background: var(--panel); }
+.teamsServiceIncidents article + article { margin-top: 16px; }
+.teamsServiceIncidents [data-incident-state="active"] { --incident-edge: #eab308; --incident-text: #F9AE00; }
+.teamsServiceIncidents [data-incident-state="resolved"] { --incident-edge: #22c55e; --incident-text: #3BB537; }
+.teamsServiceIncidents [data-incident-state="outage"] { --incident-edge: #ef4444; --incident-text: #EC2F3E; }
+.teamsServiceIncidentLabel { color: var(--incident-text); border: 1px solid var(--incident-edge); border-radius: 4px; padding: 3px 8px; font-weight: 700; font-size: 12px; }
+.teamsServiceIncidentHeading { display: flex; justify-content: space-between; gap: 20px; align-items: baseline; }
+.teamsServiceIncidentHeading h5 { margin: 0; color: var(--ink); font-size: 16px; }
+.teamsServiceDate { font-size: 12px; }
+.teamsServiceDescription { white-space: pre-line; overflow-wrap: anywhere; font-size: 14px; }
+.teamsServiceIncidents a { color: var(--focus); font-size: 13px; font-weight: 700; }
+.teamsServiceHistory { display: inline-block; margin-top: 24px; padding: 8px 0; }
+.teamsServiceError { margin: 0; padding: 16px 28px; color: var(--red); }
+@media (max-width: 600px) {
+  .teamsServiceRow { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; padding: 20px 17px; }
+  .teamsServiceIdentity { grid-column: 1 / -1; gap: 12px; }
+  .teamsServiceCount { justify-self: start; }
+  .teamsServiceToggle { grid-column: 2; grid-row: 2; }
+  .teamsServiceIncidents { padding: 20px; }
+  .teamsServiceIncidentHeading { flex-direction: column; gap: 6px; }
+}

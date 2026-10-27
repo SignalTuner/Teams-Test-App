@@ -1,0 +1,18 @@
+.remoteAnalysisDialog.remoteAnalysisDialog--live { width: min(900px, calc(100vw - 40px)); }
+.live-analysis { margin-top: 20px; }
+.live-analysis-heading, .live-metric-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 10px; }
+.live-analysis-heading h3 { margin: 0; }
+.live-analysis-heading > span, .live-analysis-status { font-size: 12px; color: var(--muted); }
+.live-analysis-stale { color: #c77b18; }
+.live-analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.live-metric { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.live-metric--chart { padding-block: 7px; }
+.live-metric--wifiStrength { grid-column: 1 / -1; }
+.live-metric-heading h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.live-metric-heading strong { font-size: 20px; }
+.live-metric svg { display: block; width: 100%; height: 59px; margin-top: 4px; overflow: visible; }
+.live-metric svg text { fill: var(--muted); font-size: 10px; }
+.live-chart-grid { stroke: var(--line); stroke-width: .6; }
+@media (max-width: 600px) { .live-analysis-grid { grid-template-columns: 1fr; } .live-metric-heading strong { font-size: 18px; } }
+
+.live-metric--summary .live-metric-heading { min-height: 48px; align-items: center; }

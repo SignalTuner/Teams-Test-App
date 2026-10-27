@@ -3,14 +3,16 @@ import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
 
 import "./App.css";
+import SettingsPage from "./SettingsPage";
+import AppearanceSelector from "./AppearanceSelector";
+import SupportPage from "./SupportPage";
+import { saveAccountProfile } from "./settingsAccount";
 import deviceCoresIcon from "./assets/device-cores-icon.svg";
 import deviceCpuIcon from "./assets/device-cpu-icon.svg";
-import deviceDivIcon from "./assets/device-div-icon.svg";
 import deviceMemoryIcon from "./assets/device-memory-icon.svg";
 import deviceProcessorIcon from "./assets/device-processor-icon.svg";
 import downloadStepIcon from "./assets/download.svg";
 import networkDownloadIcon from "./assets/network-download-icon.svg";
-import networkDivIcon from "./assets/network-div-icon.svg";
 import networkLatencyIcon from "./assets/network-latency-icon.svg";
 import networkPacketLossIcon from "./assets/network-packet-loss-icon.svg";
 import networkUploadIcon from "./assets/network-upload-icon.svg";
@@ -20,13 +22,15 @@ import signalRecommendationIcon from "./assets/signal-reccommendation-icon.svg";
 import signalTunerDarkLogo from "./assets/signaltuner-logo-horizontal-darkmode.png";
 import signalTunerLogo from "./assets/signaltuner-logo-horizontal.png";
 import clientPreview from "./assets/client.png";
-import analysisPreview from "./assets/analysis.png";
-import loginDashboardPreview from "./assets/login-dashboard-preview.png";
+import teamsAnalysisPreview from "./assets/teams-analysis-preview.png";
+import MeetingServiceStatus from "./MeetingServiceStatus";
+import { openMeetingInvitations } from "./meetingInvitations";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
+import RemoteAnalysisButton, { type RequestState } from "./RemoteAnalysisButton";
+import MeetingAnalysisButton from "./MeetingAnalysisButton";
 import privacyPolicyMarkdown from "./content/privacy-policy.md?raw";
 import termsOfServiceMarkdown from "./content/terms-of-service.md?raw";
 import workspaceCurrentNetworkIcon from "./assets/workspace-current-network-icon.svg";
-import workspaceDivIcon from "./assets/workspace-div-icon.svg";
 import workspaceNetworkFrequencyIcon from "./assets/workspace-network-frequency-icon.svg";
 import workspaceVpnIcon from "./assets/workspace-vpn-icon.svg";
 import workspaceWifiStrengthIcon from "./assets/workspace-wifi-strength-icon.svg";
@@ -35,7 +39,6 @@ type AuthProvider = "teams_sso" | "google" | "github" | "email_magic_code";
 type ClientDataStatus = "active" | "inactive" | "no_data";
 type AnalysisStatus = "Healthy" | "Fair" | "Poor" | "Critical" | "Offline" | "No data" | string;
 type SignalDisplayStatus = "Healthy" | "Fair" | "Poor" | "Critical" | "Offline" | "Unknown";
-type TeamsServiceStatus = "operational" | "activeIncident" | "outage";
 
 type CurrentUser = {
   userId: number;
@@ -206,7 +209,6 @@ type SignalScoreTrendPoint = {
 
 type SignalScoreTrendResponse = {
   userId: number;
-  deviceId: string | null;
   points: SignalScoreTrendPoint[];
 };
 
@@ -215,51 +217,8 @@ type SubscriptionPrompt = {
   availableCredits: number;
 };
 
-const EXAMPLE_ACTIVE_INCIDENTS: ServiceIncident[] = [
-  {
-    incidentId: -1,
-    title: "Users may experience choppy audio in meetings",
-    status: "Active",
-    impact: "Some calls may have degraded audio quality.",
-    startedAt: "2026-07-24T10:32:00Z",
-    uniqueIdentifier: "ST-DEMO-TEAMS-AUDIO-001",
-  },
-  {
-    incidentId: -2,
-    title: "Delays in message delivery in Teams",
-    status: "Active",
-    impact: "Chat messages may be delayed for some users.",
-    startedAt: "2026-07-24T09:15:00Z",
-    uniqueIdentifier: "ST-DEMO-TEAMS-CHAT-002",
-  },
-  {
-    incidentId: -3,
-    title: "Slow loading of Teams channels and tabs",
-    status: "Active",
-    impact: "Teams channels and embedded app tabs may load slowly.",
-    startedAt: "2026-07-23T21:47:00Z",
-    uniqueIdentifier: "ST-DEMO-TEAMS-TABS-003",
-  },
-  {
-    incidentId: -4,
-    title: "Meeting join failures for a subset of users",
-    status: "Active",
-    impact: "Some users may need to retry joining meetings.",
-    startedAt: "2026-07-23T18:25:00Z",
-    uniqueIdentifier: "ST-DEMO-TEAMS-JOIN-004",
-  },
-  {
-    incidentId: -5,
-    title: "Intermittent screen sharing degradation",
-    status: "Active",
-    impact: "Screen sharing may briefly freeze or reduce quality.",
-    startedAt: "2026-07-23T15:10:00Z",
-    uniqueIdentifier: "ST-DEMO-TEAMS-SHARE-005",
-  },
-];
-
 type AuthPageMode = "login" | "create-account" | "forgot-password" | "support";
-type InAppPage = "dashboard" | "account" | "settings" | "support";
+type InAppPage = "dashboard" | "settings" | "support";
 type AuthBusyState =
   | "idle"
   | "initializing-teams"
@@ -649,14 +608,6 @@ async function completeUserProfile(
   });
 }
 
-async function updateAccountEmail(apiBaseUrl: string, token: string, email: string): Promise<AuthResponse> {
-  return fetchJson<AuthResponse>(`${apiBaseUrl}/api/User/email`, {
-    method: "PUT",
-    headers: buildAuthHeaders(token),
-    body: JSON.stringify({ email: email.trim() }),
-  });
-}
-
 function normalizeBaseUrl(baseUrl: string | undefined): string {
   return baseUrl ? baseUrl.replace(/\/+$/, "") : "";
 }
@@ -772,22 +723,6 @@ function getInitials(name: string | null | undefined, email: string | null | und
     .join("") || "ST";
 }
 
-function getSignalTone(score: number | null | undefined): "good" | "fair" | "poor" | "none" {
-  if (score === null || score === undefined || Number.isNaN(score)) {
-    return "none";
-  }
-
-  if (score >= 75) {
-    return "good";
-  }
-
-  if (score >= 55) {
-    return "fair";
-  }
-
-  return "poor";
-}
-
 function getSignalDisplayStatusFromScore(score: number | null | undefined): "Healthy" | "Fair" | "Poor" | "Critical" | "Unknown" {
   if (score === null || score === undefined || Number.isNaN(score)) {
     return "Unknown";
@@ -872,45 +807,6 @@ function getSignalStatusColor(status: SignalDisplayStatus): string {
     default:
       return "#6B96C1";
   }
-}
-
-function normalizeTeamsServiceStatus(health: TeamsServiceHealth): TeamsServiceStatus {
-  const status = String(health.currentStatus ?? "").toLowerCase();
-  const hasActiveIncidents = health.activeIncidents.length > 0 || health.unresolvedIncidents.length > 0;
-
-  if (status.includes("outage") || status.includes("critical") || status.includes("down")) {
-    return "outage";
-  }
-
-  if (status.includes("incident") || status.includes("degrad") || status.includes("issue") || hasActiveIncidents) {
-    return "activeIncident";
-  }
-
-  return "operational";
-}
-
-function getTeamsStatusMeta(status: TeamsServiceStatus): { label: string; className: string; description: string } {
-  if (status === "outage") {
-    return {
-      label: "Outage",
-      className: "statusOutage",
-      description: "Microsoft Teams is reporting a service outage that may interrupt meeting quality.",
-    };
-  }
-
-  if (status === "activeIncident") {
-    return {
-      label: "Active Incident",
-      className: "statusIncident",
-      description: "Some users may experience degraded performance.",
-    };
-  }
-
-  return {
-    label: "Operational",
-    className: "statusOperational",
-    description: "Microsoft Teams service health is currently operational.",
-  };
 }
 
 function getTelemetryValue(telemetry: TelemetryRecord | null, keys: string[], fallback = "No data"): string {
@@ -1555,7 +1451,6 @@ function normalizeSignalScoreTrend(value: unknown): SignalScoreTrendResponse {
 
   return {
     userId: readNumber(record, 0, "userId", "UserId", "user_id"),
-    deviceId: readString(record, "deviceId", "DeviceId", "signalDeviceId", "SignalDeviceId"),
     points,
   };
 }
@@ -1911,8 +1806,7 @@ function BrandPanel() {
           <span>A focus on the Microsoft Teams experience, including live incident reports.</span>
         </article>
       </div>
-      <img className="meetingPreview meetingPreviewLight" src={loginDashboardPreview} alt="" aria-hidden="true" />
-      <img className="meetingPreview meetingPreviewDark" src={analysisPreview} alt="" aria-hidden="true" />
+      <img className="meetingPreview" src={teamsAnalysisPreview} alt="" aria-hidden="true" />
     </aside>
   );
 }
@@ -2874,82 +2768,14 @@ function ClientPrompt({
   );
 }
 
-function IncidentReportRow({
-  incident,
-  onSelect,
-  statusClassName,
-}: {
-  incident: ServiceIncident;
-  onSelect: () => void;
-  statusClassName: string;
-}) {
-  const reportDate = incident.startedAt ? new Date(incident.startedAt).toLocaleString() : "No date";
-  const iconGlyph = statusClassName === "statusOperational" ? "✓" : "!";
-
-  return (
-    <button className="compactIncident" onClick={onSelect} type="button">
-      <span className={`incidentIcon ${statusClassName}`} aria-hidden="true">{iconGlyph}</span>
-      <strong>{incident.title}</strong>
-      <span className={`semanticBadge ${statusClassName}`}>{incident.status}</span>
-      <time>{reportDate}</time>
-    </button>
-  );
-}
-
-function IncidentDetailModal({
-  incident,
-  onClose,
-}: {
-  incident: ServiceIncident;
-  onClose: () => void;
-}) {
-  const incidentLink = incident.link || "https://status.cloud.microsoft/microsoft-365";
-
-  return (
-    <div
-      className="incidentModalOverlay"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section aria-labelledby="incident-detail-title" aria-modal="true" className="incidentModal" role="dialog">
-        <header className="incidentModalHeader">
-          <div>
-            <span className="eyebrow">Incident report</span>
-            <h2 id="incident-detail-title">{incident.title}</h2>
-          </div>
-          <button aria-label="Close incident details" className="modalCloseButton" onClick={onClose} type="button">
-            Close
-          </button>
-        </header>
-        <div className="incidentModalBody">
-          <div className="incidentModalField">
-            <span>Description</span>
-            <p>{incident.impact || "No incident description is available."}</p>
-          </div>
-          <div className="incidentModalField">
-            <span>Unique identifier</span>
-            <p>{incident.uniqueIdentifier || "Not available"}</p>
-          </div>
-          <a className="incidentReportLink" href={incidentLink} rel="noreferrer" target="_blank">
-            Microsoft Teams incident report
-          </a>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function CreditRequiredModal({
   prompt,
   onClose,
-  onOpenAccount,
+  onOpenSettings,
 }: {
   prompt: SubscriptionPrompt;
   onClose: () => void;
-  onOpenAccount: () => void;
+  onOpenSettings: () => void;
 }) {
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2986,8 +2812,8 @@ function CreditRequiredModal({
             This analysis requires {prompt.requiredCredits} credits. You have {prompt.availableCredits} available.
           </p>
           <div className="creditRequiredActions">
-            <button className="primaryButton" onClick={onOpenAccount} type="button">
-              Open Account
+            <button className="primaryButton" onClick={onOpenSettings} type="button">
+              Open Settings
             </button>
             <button className="secondaryButton" onClick={onClose} type="button">
               Dismiss
@@ -2997,6 +2823,15 @@ function CreditRequiredModal({
       </section>
     </div>
   );
+}
+
+// Match the website SignalScoreGauge's center, radius and 250-degree sweep.
+function signalScoreArc(sweep: number): string {
+  const point = (angle: number) => {
+    const radians = angle * Math.PI / 180;
+    return `${47.3 + 34.6 * Math.cos(radians)} ${51 + 34.6 * Math.sin(radians)}`;
+  };
+  return `M ${point(145)} A 34.6 34.6 0 ${sweep > 180 ? 1 : 0} 1 ${point(145 + sweep)}`;
 }
 
 function CompactSignalScoreDisplay({
@@ -3014,47 +2849,35 @@ function CompactSignalScoreDisplay({
   const displayScore = scoreIsAvailable ? Math.round(score) : null;
   const clampedScore = displayScore === null ? 0 : Math.max(0, Math.min(100, displayScore));
   const displayStatus = getSignalOverallStatusLabel(overallStatus, scoreIsAvailable ? score : null);
-  const meterColor = getSignalStatusColor(displayStatus);
 
   return (
     <div
       className={`compactSignalScoreDisplay compactSignalScore-${displayStatus.toLowerCase()}`}
+      role="img"
       aria-label={
         scoreIsAvailable
           ? `${accessibleLabel} ${displayScore} percent, overall status ${displayStatus}`
-          : `${accessibleLabel} unavailable`
+          : `${accessibleLabel} unavailable, overall status ${displayStatus}`
       }
     >
-      <svg className="signal-score-meter compactSignalScoreMeter" viewBox="0 0 130 106" aria-hidden="true">
-        <path
-          className="compactSignalScoreOuter"
-          d="M16.6779 103.938C-10.8555 68.9427 5.22696 6.00502 64.9035 3.64307C98.9156 3.64307 126.489 31.2165 126.489 65.2286C126.489 79.8935 121.363 93.3614 112.805 103.938"
-        />
+      <svg className="compactSignalScoreMeter" viewBox="0 0 95 82" aria-hidden="true" focusable="false">
         <path
           className="compactSignalScoreTrack"
-          d="M18.8746 84.5C17.3302 82.6052 15.9338 80.5851 14.7029 78.4573C10.789 71.6913 8.54889 63.8359 8.54889 55.4573C8.54889 30.0522 29.1438 9.45728 54.5489 9.45728C79.954 9.45728 100.549 30.0522 100.549 55.4573C100.549 63.8359 98.3088 71.6913 94.3949 78.4573C93.238 80.4573 91.9348 82.3621 90.5 84.157"
+          d={signalScoreArc(250)}
         />
-        {scoreIsAvailable && (
+        {scoreIsAvailable && clampedScore > 0 && (
           <path
             className="compactSignalScoreArc"
-            d="M18.8746 84.5C17.3302 82.6052 15.9338 80.5851 14.7029 78.4573C10.789 71.6913 8.54889 63.8359 8.54889 55.4573C8.54889 30.0522 29.1438 9.45728 54.5489 9.45728C79.954 9.45728 100.549 30.0522 100.549 55.4573C100.549 63.8359 98.3088 71.6913 94.3949 78.4573C93.238 80.4573 91.9348 82.3621 90.5 84.157"
-            pathLength={100}
-            stroke={meterColor}
-            strokeDasharray={`${clampedScore} 100`}
+            d={signalScoreArc(250 * clampedScore / 100)}
           />
         )}
+        <text className="compactSignalScoreValue" x="47.3" y="49" textAnchor="middle">
+          {displayScore === null ? "-" : `${displayScore}%`}
+        </text>
+        <text className="compactSignalScoreStatus" x="47.3" y="63" textAnchor="middle">
+          {displayStatus}
+        </text>
       </svg>
-      <span className="compactSignalScoreValue">
-        {displayScore === null ? (
-          "-"
-        ) : (
-          <>
-            <span>{displayScore}</span>
-            <span>%</span>
-          </>
-        )}
-      </span>
-      <span className="compactSignalScoreStatus">{displayStatus}</span>
     </div>
   );
 }
@@ -3149,392 +2972,6 @@ function SignalScoreTrendChart({
   );
 }
 
-function AccountPage({
-  isAddingTestingCredit,
-  onUpdateProfile,
-  onUpdateEmail,
-  onUpdatePassword,
-  onAddTestingCredit,
-  user,
-}: {
-  isAddingTestingCredit: boolean;
-  onUpdateProfile: (firstName: string, lastName: string) => Promise<CurrentUser>;
-  onUpdateEmail: (email: string) => Promise<CurrentUser>;
-  onUpdatePassword: (newPassword: string) => Promise<string>;
-  onAddTestingCredit: () => Promise<void>;
-  user: CurrentUser;
-}) {
-  const [firstName, setFirstName] = React.useState(user.firstName ?? "");
-  const [lastName, setLastName] = React.useState(user.lastName ?? "");
-  const [email, setEmail] = React.useState(user.email ?? "");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [profileMessage, setProfileMessage] = React.useState<string | null>(null);
-  const [profileError, setProfileError] = React.useState<string | null>(null);
-  const [emailMessage, setEmailMessage] = React.useState<string | null>(null);
-  const [emailError, setEmailError] = React.useState<string | null>(null);
-  const [passwordMessage, setPasswordMessage] = React.useState<string | null>(null);
-  const [passwordError, setPasswordError] = React.useState<string | null>(null);
-  const [isUpdatingProfile, setIsUpdatingProfile] = React.useState(false);
-  const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
-  const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
-  const [profileFieldErrors, setProfileFieldErrors] = React.useState<{ firstName?: string; lastName?: string }>({});
-  const firstNameRef = React.useRef<HTMLInputElement | null>(null);
-  const lastNameRef = React.useRef<HTMLInputElement | null>(null);
-  const emailRef = React.useRef<HTMLInputElement | null>(null);
-  const subscriptionPlan = user.subscriptionPlan?.trim() || "Free";
-
-  const hasPassword = Boolean(user.hasPassword);
-
-  React.useEffect(() => {
-    setFirstName(user.firstName ?? "");
-    setLastName(user.lastName ?? "");
-    setEmail(user.email ?? "");
-  }, [user.email, user.firstName, user.lastName]);
-
-  const submitProfileUpdate = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setProfileMessage(null);
-    setProfileError(null);
-
-    const nextErrors = {
-      firstName: firstName.trim() ? undefined : "Enter your first name.",
-      lastName: lastName.trim() ? undefined : "Enter your last name.",
-    };
-
-    setProfileFieldErrors(nextErrors);
-
-    if (nextErrors.firstName) {
-      firstNameRef.current?.focus();
-      return;
-    }
-
-    if (nextErrors.lastName) {
-      lastNameRef.current?.focus();
-      return;
-    }
-
-    setIsUpdatingProfile(true);
-
-    try {
-      const updatedUser = await onUpdateProfile(firstName, lastName);
-      setFirstName(updatedUser.firstName ?? firstName.trim());
-      setLastName(updatedUser.lastName ?? lastName.trim());
-      setProfileMessage("Display name updated successfully.");
-    } catch (caught) {
-      setProfileError(getFriendlyErrorMessage(caught, "Failed to update display name."));
-    } finally {
-      setIsUpdatingProfile(false);
-    }
-  };
-
-  const submitEmailUpdate = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setEmailMessage(null);
-    setEmailError(null);
-
-    if (!isValidEmail(email)) {
-      setEmailError("Enter a valid email address.");
-      emailRef.current?.focus();
-      return;
-    }
-
-    if (!hasPassword) {
-      setEmailError("Create a password before updating your email.");
-      return;
-    }
-
-    setIsUpdatingEmail(true);
-
-    try {
-      const updatedUser = await onUpdateEmail(email);
-      setEmail(updatedUser.email ?? email.trim());
-      setEmailMessage("Email updated successfully.");
-    } catch (caught) {
-      setEmailError(getFriendlyErrorMessage(caught, "Failed to update email."));
-    } finally {
-      setIsUpdatingEmail(false);
-    }
-  };
-
-  const submitPasswordUpdate = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setPasswordMessage(null);
-
-    const validationError = validatePassword(newPassword);
-
-    if (validationError) {
-      setPasswordError(validationError);
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords must match.");
-      return;
-    }
-
-    setIsUpdatingPassword(true);
-    setPasswordError(null);
-
-    try {
-      const message = await onUpdatePassword(newPassword);
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordMessage(message);
-    } catch (caught) {
-      setPasswordError(getFriendlyErrorMessage(caught, "Failed to update password."));
-    } finally {
-      setIsUpdatingPassword(false);
-    }
-  };
-
-  return (
-    <section className="panel accountPagePanel">
-      <div className="sectionTitleRow">
-        <div>
-          <h2>Account</h2>
-        </div>
-      </div>
-      <div className="settingsGrid">
-        <div className="accountControls">
-          <form className="settingsSection" aria-label="Display name" onSubmit={(event) => void submitProfileUpdate(event)}>
-            <h3>Display name</h3>
-            <div className="splitFields">
-              <div className="fieldGroup">
-                <label htmlFor="account-first-name">First name</label>
-                <input
-                  aria-describedby={profileFieldErrors.firstName ? "account-first-name-error" : undefined}
-                  aria-invalid={Boolean(profileFieldErrors.firstName)}
-                  autoComplete="given-name"
-                  id="account-first-name"
-                  onChange={(event) => setFirstName(event.target.value)}
-                  ref={firstNameRef}
-                  type="text"
-                  value={firstName}
-                />
-                {profileFieldErrors.firstName && (
-                  <p className="fieldError" id="account-first-name-error">
-                    {profileFieldErrors.firstName}
-                  </p>
-                )}
-              </div>
-              <div className="fieldGroup">
-                <label htmlFor="account-last-name">Last name</label>
-                <input
-                  aria-describedby={profileFieldErrors.lastName ? "account-last-name-error" : undefined}
-                  aria-invalid={Boolean(profileFieldErrors.lastName)}
-                  autoComplete="family-name"
-                  id="account-last-name"
-                  onChange={(event) => setLastName(event.target.value)}
-                  ref={lastNameRef}
-                  type="text"
-                  value={lastName}
-                />
-                {profileFieldErrors.lastName && (
-                  <p className="fieldError" id="account-last-name-error">
-                    {profileFieldErrors.lastName}
-                  </p>
-                )}
-              </div>
-            </div>
-            {profileError && <p className="inlineError">{profileError}</p>}
-            {profileMessage && (
-              <p className="settingsStatus" role="status" aria-live="polite">
-                {profileMessage}
-              </p>
-            )}
-            <button className="primaryButton settingsSaveButton" disabled={isUpdatingProfile} type="submit">
-              {isUpdatingProfile ? <Spinner /> : null}
-              <span>Update name</span>
-            </button>
-          </form>
-
-          <form className="settingsSection" aria-label="Account email" onSubmit={(event) => void submitEmailUpdate(event)}>
-            <h3>Email</h3>
-            <div className="fieldGroup">
-              <label htmlFor="account-email">Email</label>
-              <input
-                aria-describedby={emailError ? "account-email-error" : undefined}
-                aria-invalid={Boolean(emailError)}
-                autoComplete="email"
-                id="account-email"
-                onChange={(event) => setEmail(event.target.value)}
-                ref={emailRef}
-                type="email"
-                value={email}
-              />
-              {emailError && (
-                <p className="fieldError" id="account-email-error">
-                  {emailError}
-                </p>
-              )}
-            </div>
-            {!hasPassword && <p className="inlineNote">Create a password before updating your email.</p>}
-            {emailMessage && (
-              <p className="settingsStatus" role="status" aria-live="polite">
-                {emailMessage}
-              </p>
-            )}
-            <button className="primaryButton settingsSaveButton" disabled={isUpdatingEmail || !hasPassword} type="submit">
-              {isUpdatingEmail ? <Spinner /> : null}
-              <span>Update email</span>
-            </button>
-          </form>
-
-          <form className="settingsSection" aria-label="Account password" onSubmit={(event) => void submitPasswordUpdate(event)}>
-            <h3>Password</h3>
-            <div className="splitFields">
-              <PasswordField
-                error={passwordError ?? undefined}
-                helpText={PASSWORD_REQUIREMENT_TEXT}
-                id="account-new-password"
-                label={hasPassword ? "New password" : "Create password"}
-                onChange={setNewPassword}
-                placeholder={hasPassword ? "Enter a new password" : "Create a password"}
-                value={newPassword}
-              />
-              <PasswordField
-                error={newPassword && confirmPassword && newPassword !== confirmPassword ? "Passwords must match." : undefined}
-                id="account-confirm-password"
-                label="Confirm password"
-                onChange={setConfirmPassword}
-                placeholder="Confirm password"
-                value={confirmPassword}
-              />
-            </div>
-            {passwordMessage && (
-              <p className="settingsStatus" role="status" aria-live="polite">
-                {passwordMessage}
-              </p>
-            )}
-            <button className="primaryButton settingsSaveButton" disabled={isUpdatingPassword} type="submit">
-              {isUpdatingPassword ? <Spinner /> : null}
-              <span>{hasPassword ? "Update password" : "Create password"}</span>
-            </button>
-          </form>
-        </div>
-        <aside className="settingsSection accountMetaSection">
-          <div className="activationCodeBlock accountActivationCode">
-            <span>Desktop client activation code</span>
-            <TemporaryActivationCode />
-          </div>
-          <div className="fieldGroup">
-            <label htmlFor="account-organization">Organization</label>
-            <input id="account-organization" readOnly type="text" value="" />
-          </div>
-          <div className="fieldGroup">
-            <label htmlFor="account-subscription">Subscription</label>
-            <input id="account-subscription" readOnly type="text" value={subscriptionPlan} />
-          </div>
-          <div className="fieldGroup">
-            <label htmlFor="account-credits">Credits</label>
-            <div className="creditControl">
-              <input id="account-credits" readOnly type="text" value={String(user.credits)} />
-              <button
-                className="secondaryButton creditIncrementButton"
-                disabled={isAddingTestingCredit}
-                onClick={() => void onAddTestingCredit()}
-                type="button"
-              >
-                +1
-              </button>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </section>
-  );
-}
-
-function SettingsPage({
-  themePreference,
-  onThemePreferenceChange,
-}: {
-  themePreference: SignalTunerThemePreference;
-  onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
-}) {
-  return (
-    <section className="panel settingsPagePanel">
-      <div className="sectionTitleRow">
-        <div>
-          <h2>Settings</h2>
-        </div>
-      </div>
-      <div className="settingsGrid">
-        <div className="settingsSection themePreferenceControl">
-          <strong>Appearance</strong>
-          <div className="segmentedControl" role="group" aria-label="SignalTuner appearance">
-            <button
-              aria-pressed={themePreference === "light"}
-              className={themePreference === "light" ? "activeSegment" : ""}
-              onClick={() => onThemePreferenceChange("light")}
-              type="button"
-            >
-              Light
-            </button>
-            <button
-              aria-pressed={themePreference === "dark"}
-              className={themePreference === "dark" ? "activeSegment" : ""}
-              onClick={() => onThemePreferenceChange("dark")}
-              type="button"
-            >
-              Dark
-            </button>
-          </div>
-        </div>
-        <div className="settingsSection">
-          <h3>Microsoft Teams</h3>
-          <label className="settingsToggleRow" htmlFor="setting-auto-add-meetings">
-            <input id="setting-auto-add-meetings" type="checkbox" />
-            <span>Add SignalTuner to recurring Teams meetings</span>
-          </label>
-          <label className="settingsToggleRow" htmlFor="setting-post-activation-prompts">
-            <input id="setting-post-activation-prompts" type="checkbox" />
-            <span>Post activation prompts for participants without client data</span>
-          </label>
-          <label className="settingsToggleRow" htmlFor="setting-post-analysis-summary">
-            <input id="setting-post-analysis-summary" type="checkbox" />
-            <span>Post diagnostic summaries to meeting chat after full analysis</span>
-          </label>
-          <label className="settingsToggleRow" htmlFor="setting-post-service-incidents">
-            <input id="setting-post-service-incidents" type="checkbox" />
-            <span>Post active Microsoft Teams incident updates to meeting chat</span>
-          </label>
-          <label className="settingsToggleRow" htmlFor="setting-organizer-approval">
-            <input defaultChecked id="setting-organizer-approval" type="checkbox" />
-            <span>Require organizer approval before automated chat posts</span>
-          </label>
-          <button className="primaryButton settingsSaveButton" disabled type="button">
-            Save settings
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SupportPage({
-  defaultEmail,
-  onSendSupportEmail,
-}: {
-  defaultEmail?: string | null;
-  onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
-}) {
-  return (
-    <section className="panel supportPagePanel">
-      <div className="sectionTitleRow">
-        <div>
-          <h2>Support</h2>
-          <p>Send a message to support@signaltuner.com.</p>
-        </div>
-      </div>
-      <div className="supportPanelBody">
-        <SupportForm defaultEmail={defaultEmail} onSubmit={onSendSupportEmail} />
-      </div>
-    </section>
-  );
-}
-
 function Dashboard({
   analysis,
   apiBaseUrl,
@@ -3542,10 +2979,6 @@ function Dashboard({
   activePage,
   error,
   isLoading,
-  isAddingTestingCredit,
-  onAddTestingCredit,
-  onAnalyzeAll,
-  onAnalyzeUser,
   onInvite,
   onNavigate,
   onDismissSubscriptionPrompt,
@@ -3553,7 +2986,6 @@ function Dashboard({
   onSignOut,
   onThemePreferenceChange,
   onUpdateProfile,
-  onUpdateEmail,
   onUpdatePassword,
   sessionToken,
   subscriptionPrompt,
@@ -3565,18 +2997,13 @@ function Dashboard({
   activePage: InAppPage;
   error: string | null;
   isLoading: boolean;
-  isAddingTestingCredit: boolean;
-  onAddTestingCredit: () => Promise<void>;
-  onAnalyzeAll: () => Promise<void>;
-  onAnalyzeUser: (targetUserId: number) => Promise<void>;
   onInvite: () => Promise<void>;
   onNavigate: (page: InAppPage) => void;
   onDismissSubscriptionPrompt: () => void;
   onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
   onSignOut: () => void;
   onThemePreferenceChange: (preference: SignalTunerThemePreference) => void;
-  onUpdateProfile: (firstName: string, lastName: string) => Promise<CurrentUser>;
-  onUpdateEmail: (email: string) => Promise<CurrentUser>;
+  onUpdateProfile: (firstName: string, lastName: string, email: string) => Promise<void>;
   onUpdatePassword: (newPassword: string) => Promise<string>;
   sessionToken: string;
   subscriptionPrompt: SubscriptionPrompt | null;
@@ -3584,31 +3011,23 @@ function Dashboard({
 }) {
   const [accountOpen, setAccountOpen] = React.useState(false);
   const accountMenuRef = React.useRef<HTMLDivElement | null>(null);
-  const [recentIncidentsOpen, setRecentIncidentsOpen] = React.useState(false);
-  const recentIncidentsRef = React.useRef<HTMLDivElement | null>(null);
-  const [selectedIncident, setSelectedIncident] = React.useState<ServiceIncident | null>(null);
   const [expandedParticipantIds, setExpandedParticipantIds] = React.useState<Set<number>>(() => new Set());
   const [signalScoreTrends, setSignalScoreTrends] = React.useState<Record<number, SignalScoreTrendResponse>>({});
   const [signalScoreTrendLoadingIds, setSignalScoreTrendLoadingIds] = React.useState<Set<number>>(() => new Set());
   const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
   const [nowMs, setNowMs] = React.useState(Date.now());
+  const [meetingAnalysisRequests, setMeetingAnalysisRequests] = React.useState<Record<string, RequestState>>({});
   const user = dashboard.currentUser;
   const participants = React.useMemo(() => sortParticipantsByMeetingRole(dashboard.participants), [dashboard.participants]);
   const activeParticipants = participants.filter((participant) => participant.clientDataStatus === "active");
   const participantsWithActiveScores = activeParticipants.filter(
     (participant) => participant.signalScore !== null && Number.isFinite(participant.signalScore)
   );
-  const activeIncidents =
-    dashboard.teamsServiceHealth.activeIncidents.length > 0
-      ? dashboard.teamsServiceHealth.activeIncidents
-      : EXAMPLE_ACTIVE_INCIDENTS;
-  const resolvedIncidents = dashboard.teamsServiceHealth.recentIncidents.filter(isResolvedIncident);
-  const teamsStatus =
-    dashboard.teamsServiceHealth.activeIncidents.length > 0 ? normalizeTeamsServiceStatus(dashboard.teamsServiceHealth) : "activeIncident";
-  const teamsStatusMeta = getTeamsStatusMeta(teamsStatus);
   const connectedParticipantCount = activeParticipants.length;
   const totalParticipantCount = participants.length;
-  const connectivityIssueCount = participants.filter((participant) => participant.clientDataStatus !== "active").length;
+  const connectivityIssueCount = participantsWithActiveScores.filter((participant) =>
+    ["Poor", "Critical"].includes(getSignalDisplayStatusFromScore(participant.signalScore))
+  ).length;
   const activeIncidentCount = dashboard.teamsServiceHealth.activeIncidents.length;
   const meetingScore =
     participantsWithActiveScores.length > 0
@@ -3641,19 +3060,6 @@ function Dashboard({
     });
   }, []);
 
-  const handleAnalyzeUser = React.useCallback(
-    async (participantId: number) => {
-      setExpandedParticipantIds((current) => new Set(current).add(participantId));
-      await onAnalyzeUser(participantId);
-    },
-    [onAnalyzeUser]
-  );
-
-  const handleAnalyzeAll = React.useCallback(async () => {
-    setExpandedParticipantIds(new Set(participants.map((participant) => participant.userId)));
-    await onAnalyzeAll();
-  }, [onAnalyzeAll, participants]);
-
   React.useEffect(() => {
     if (!participants.some((participant) => getAnalysisRemainingMs(participant, Date.now()) > 0)) {
       return;
@@ -3677,36 +3083,6 @@ function Dashboard({
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [accountOpen]);
-
-  React.useEffect(() => {
-    if (!recentIncidentsOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!recentIncidentsRef.current?.contains(event.target as Node)) {
-        setRecentIncidentsOpen(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    return () => window.removeEventListener("pointerdown", handlePointerDown);
-  }, [recentIncidentsOpen]);
-
-  React.useEffect(() => {
-    if (!selectedIncident) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSelectedIncident(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIncident]);
 
   React.useEffect(() => {
     if (!expandedAnalyzableParticipantKey || !apiBaseUrl || !sessionToken) {
@@ -3814,17 +3190,6 @@ function Dashboard({
                 Dashboard
               </button>
               <button
-                className={activePage === "account" ? "activeMenuItem" : ""}
-                role="menuitem"
-                type="button"
-                onClick={() => {
-                  onNavigate("account");
-                  setAccountOpen(false);
-                }}
-              >
-                Account
-              </button>
-              <button
                 className={activePage === "settings" ? "activeMenuItem" : ""}
                 role="menuitem"
                 type="button"
@@ -3856,28 +3221,24 @@ function Dashboard({
 
       {error && <section className="panel panelAlert">{error}</section>}
 
-      {activePage === "account" && (
-        <AccountPage
-          isAddingTestingCredit={isAddingTestingCredit}
-          onAddTestingCredit={onAddTestingCredit}
-          onUpdateEmail={onUpdateEmail}
-          onUpdatePassword={onUpdatePassword}
-          onUpdateProfile={onUpdateProfile}
-          user={user}
-        />
-      )}
-
       {activePage === "settings" && (
-        <SettingsPage themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange} />
+        <SettingsPage user={user} apiBaseUrl={apiBaseUrl} token={sessionToken}
+          themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange}
+          onUpdateProfile={onUpdateProfile} onUpdatePassword={onUpdatePassword} validatePassword={validatePassword} />
       )}
 
       {activePage === "support" && (
-        <SupportPage defaultEmail={user.email} onSendSupportEmail={onSendSupportEmail} />
+        <SupportPage defaultName={user.displayName} defaultEmail={user.email} onSendSupportEmail={onSendSupportEmail}
+          themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange} />
       )}
 
       {activePage === "dashboard" && (
         <>
-      <section className="panel meetingHealthPanel">
+      <div className="dashboardAppearanceRow">
+        <AppearanceSelector value={themePreference} onChange={onThemePreferenceChange} />
+      </div>
+      <section className="panel meetingHealthPanel" aria-labelledby="meeting-overview-heading">
+        <h2 id="meeting-overview-heading" className="meetingOverviewTitle">Meeting Overview</h2>
         <div className="meetingScoreDisplay">
           <span className="meetingScoreLabel">Meeting Score</span>
           <CompactSignalScoreDisplay
@@ -3931,231 +3292,137 @@ function Dashboard({
                 )}
               </svg>
             }
-            label="Participants experiencing connectivity issues"
-            tone={connectivityIssueCount === 0 ? "good" : connectedParticipantCount === 0 ? "poor" : "warning"}
+            label={<>Participants experiencing<br />connectivity issues</>}
+            tone={connectedParticipantCount === 0 ? "neutral" : connectivityIssueCount === 0 ? "good" : "warning"}
             value={String(connectivityIssueCount)}
           />
         </div>
         <div className="healthActions">
-          <button className="primaryButton" disabled={isLoading || activeParticipants.length === 0} onClick={handleAnalyzeAll} type="button">
-            Run full analysis
-          </button>
-          <p>Deep diagnostic analysis of all participants and network path.</p>
+          <MeetingAnalysisButton key={`${user.userId}:${dashboard.meetingSessionId}`}
+            apiBaseUrl={apiBaseUrl} token={sessionToken} userId={user.userId}
+            meetingSessionId={dashboard.meetingSessionId} participants={participants} disabled={isLoading}
+            onAccepted={results => setMeetingAnalysisRequests(current => ({ ...current,
+              ...Object.fromEntries(results.filter(result => result.request).map(result => [
+                `${user.userId}:${dashboard.meetingSessionId}:${result.targetUserId}`, result.request!,
+              ])),
+            }))} />
         </div>
       </section>
 
-      <section className="panel participantsPanel">
-        <div className="sectionTitleRow">
+      <section className="panel participantsPanel" aria-labelledby="meeting-participants-heading">
+        <div className="participantsToolbar">
           <div>
-            <h2>Meeting Participants</h2>
+            <h2 id="meeting-participants-heading">Meeting Participants</h2>
+            <p>{participants.length} {participants.length === 1 ? "participant" : "participants"}</p>
           </div>
           <div className="buttonRow inlineButtons">
-            <button className="secondaryButton" disabled={isLoading} onClick={onInvite} type="button">
+            <button className="secondaryButton participantInviteButton" disabled={isLoading} onClick={onInvite} type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="m3 7 9 6 9-6" />
+              </svg>
               Invite
             </button>
           </div>
         </div>
 
-        <div className="tableWrap">
-          <table className="participantTable">
-            <colgroup>
-              <col className="expandColumn" />
-              <col className="participantColumn" />
-              <col className="scoreColumn" />
-              <col className="signalColumn" />
-              <col className="signalColumn" />
-              <col className="signalColumn" />
-              <col className="actionsColumn" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th aria-label="Expand participant telemetry"></th>
-                <th>Participant</th>
-                <th><span className="scoreHeaderLabel">Signal Score</span></th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={deviceDivIcon} alt="" aria-hidden="true" />
-                    <span>Device</span>
-                  </span>
-                </th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={workspaceDivIcon} alt="" aria-hidden="true" />
-                    <span>Workspace</span>
-                  </span>
-                </th>
-                <th className="centeredSignalColumn">
-                  <span className="participantHeaderLabel">
-                    <img src={networkDivIcon} alt="" aria-hidden="true" />
-                    <span>Network</span>
-                  </span>
-                </th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {participants.map((participant) => {
-                const analysisRemainingMs = getAnalysisRemainingMs(participant, nowMs);
-                const hasActiveAnalysisSession = analysisRemainingMs > 0;
-                const hasData = participant.clientDataStatus === "active";
-                const isExpanded = expandedParticipantIds.has(participant.userId);
-                const telemetry = hasActiveAnalysisSession
-                  ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
-                  : null;
-                const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
-                const analysisCoversParticipant = Boolean(telemetry);
+        {participants.length === 0 && <p className="participantsEmpty">No meeting participants are available yet.</p>}
+        <ul className="participantList" aria-label="Meeting participant list">
+          {participants.map((participant) => {
+            const analysisRemainingMs = getAnalysisRemainingMs(participant, nowMs);
+            const hasActiveAnalysisSession = analysisRemainingMs > 0;
+            const hasData = participant.clientDataStatus === "active";
+            const isExpanded = expandedParticipantIds.has(participant.userId);
+            const telemetry = hasActiveAnalysisSession
+              ? getParticipantTelemetry(analysis, participant.userId) ?? getParticipantLiveTelemetry(participant)
+              : null;
+            const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
+            const analysisCoversParticipant = Boolean(telemetry);
 
-                return (
-                  <React.Fragment key={participant.userId}>
-                    <tr>
-                      <td className="expandCell">
-                        <button
-                          aria-expanded={isExpanded}
-                          aria-label={`${isExpanded ? "Collapse" : "Expand"} telemetry for ${getParticipantName(participant)}`}
-                          className="expandButton"
-                          onClick={() => toggleParticipantTelemetry(participant.userId)}
-                          type="button"
-                        >
-                          <span className={`chevron ${isExpanded ? "chevronUp" : "chevronRight"}`} aria-hidden="true" />
-                        </button>
-                      </td>
-                      <td>
-                        <div className="participantIdentity">
-                          <span className="avatarBubble smallAvatar" aria-hidden="true">
-                            {getInitials(participant.displayName, participant.email)}
-                          </span>
-                          <div>
-                            <strong className="participantName" title={participant.email ?? getParticipantName(participant)}>
-                              {getParticipantName(participant)}
-                            </strong>
-                            <span>{formatParticipantMeetingRole(participant.meetingRole)}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="scoreCell">
+            return (
+              <RemoteAnalysisButton key={`${user.userId}:${dashboard.meetingSessionId}:${participant.userId}`} apiBaseUrl={apiBaseUrl} token={sessionToken}
+                targetUserId={participant.userId} targetName={getParticipantName(participant)}
+                backgroundRequest={meetingAnalysisRequests[`${user.userId}:${dashboard.meetingSessionId}:${participant.userId}`]}
+                meetingSessionId={dashboard.meetingSessionId}
+                expanded={isExpanded} onToggle={() => toggleParticipantTelemetry(participant.userId)}
+                onExpand={() => setExpandedParticipantIds(current => new Set(current).add(participant.userId))}
+                details={isExpanded && hasActiveAnalysisSession ? <ParticipantTelemetryDetail
+                  hasActiveAnalysisSession={hasActiveAnalysisSession}
+                  hasData={hasData || hasActiveAnalysisSession}
+                  issues={issues}
+                  signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
+                  signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
+                  signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingIds.has(participant.userId)}
+                  telemetry={telemetry}
+                /> : null}
+                renderInline={({ action, panel }) => <li className="participantListItem">
+                <div className="participantRow">
+                  <div className="participantIdentity">
+                    <span className="participantAvatar" aria-hidden="true">
+                      {getInitials(participant.displayName, participant.email)}
+                    </span>
+                    <div>
+                      <h3 className="participantName" title={getParticipantName(participant)}>
+                        {getParticipantName(participant)}
+                      </h3>
+                      {participant.email && participant.email !== getParticipantName(participant) && (
+                        <p className="participantEmail" title={participant.email}>{participant.email}</p>
+                      )}
+                      <span className="participantRole">{formatParticipantMeetingRole(participant.meetingRole)}</span>
+                    </div>
+                  </div>
+                  <dl className="participantMetrics" aria-label={`Signal status for ${getParticipantName(participant)}`}>
+                    <div>
+                      <dt>Signal Score</dt>
+                      <dd>
                         <CompactSignalScoreDisplay
                           score={participant.signalScore}
                           overallStatus={participant.overallStatus}
                           hasData={hasData}
                         />
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td className="statusLabelCell">
-                        <span className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
-                          {getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null)}
-                        </span>
-                      </td>
-                      <td>
-                        {hasActiveAnalysisSession ? (
-                          <span className="analysisSessionStatus">
-                            <span>Analysis in progress</span>
-                            <time>{formatAnalysisCountdown(analysisRemainingMs)}</time>
-                          </span>
-                        ) : hasData ? (
-                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={() => handleAnalyzeUser(participant.userId)} type="button">
-                            Analyze
-                          </button>
-                        ) : (
-                          <button className="secondaryButton compactAction" disabled={isLoading} onClick={onInvite} type="button">
-                            Prompt
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <ParticipantTelemetryDetail
-                        hasActiveAnalysisSession={hasActiveAnalysisSession}
-                        hasData={hasData || hasActiveAnalysisSession}
-                        issues={issues}
-                        signalScoreTrend={analysisCoversParticipant ? signalScoreTrends[participant.userId] ?? null : null}
-                        signalScoreTrendError={analysisCoversParticipant ? signalScoreTrendErrors[participant.userId] ?? null : null}
-                        signalScoreTrendLoading={analysisCoversParticipant && signalScoreTrendLoadingIds.has(participant.userId)}
-                        telemetry={telemetry}
-                      />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Workspace</dt>
+                      <dd className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                        {getSignalStatusLabel(participant.workspaceStatus, hasData ? participant.signalScore : null)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Network</dt>
+                      <dd className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                        {getSignalStatusLabel(participant.networkStatus, hasData ? participant.signalScore : null)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Device</dt>
+                      <dd className={`telemetryStatusLabel telemetryStatus-${getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null).toLowerCase()}`}>
+                        {getSignalStatusLabel(participant.deviceStatus, hasData ? participant.signalScore : null)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="participantActions" role="group" aria-label={`Actions for ${getParticipantName(participant)}`}>
+                    {hasActiveAnalysisSession ? (
+                      <span className="analysisSessionStatus">
+                        <span>Analysis in progress</span>
+                        <time>{formatAnalysisCountdown(analysisRemainingMs)}</time>
+                      </span>
+                    ) : !hasData ? (
+                      <button className="secondaryButton compactAction" disabled={isLoading} onClick={onInvite} type="button">
+                        Prompt
+                      </button>
+                    ) : null}
+                    {action}
+                  </div>
+                </div>
+                {panel}
+              </li>} />
+            );
+          })}
+        </ul>
       </section>
 
-      <section className="panel statusIncidentsPanel" aria-label="Microsoft Teams service health and incidents">
-        <div className="serviceStatusCard">
-          <img className="teamsMark" src={microsoftTeamsLogo} alt="Microsoft Teams" />
-          <div className="serviceStatusContent">
-            <div className="cardTitleRow">
-              <h2>Microsoft Teams</h2>
-              <span className={`semanticBadge ${teamsStatusMeta.className}`}>{teamsStatusMeta.label}</span>
-            </div>
-            <p>{teamsStatusMeta.description}</p>
-            <a className="sourceLink" href="https://www.signaltuner.com/teamsstatus" target="_blank" rel="noreferrer">
-              View Microsoft 365 Service Health
-            </a>
-          </div>
-        </div>
-
-        <div className="incidentsCard">
-          <div className="cardTitleRow">
-            <h2>Incident reports</h2>
-          </div>
-          {activeIncidents.length > 0 ? (
-            <div className={`compactIncidentList activeIncidentList ${activeIncidents.length > 3 ? "scrollableIncidentList" : ""}`}>
-              {activeIncidents.map((incident) => (
-                <IncidentReportRow
-                  incident={incident}
-                  key={incident.incidentId}
-                  onSelect={() => setSelectedIncident(incident)}
-                  statusClassName={teamsStatusMeta.className}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="emptyState">No active Microsoft Teams incidents are currently reported.</p>
-          )}
-          <div className="semanticIncidentDropdown" ref={recentIncidentsRef}>
-            <button
-              aria-controls="recent-incident-menu"
-              aria-expanded={recentIncidentsOpen}
-              className="recentIncidentsToggle"
-              onClick={() => setRecentIncidentsOpen((current) => !current)}
-              type="button"
-            >
-              <span>Resolved incidents</span>
-              <span className={`chevron ${recentIncidentsOpen ? "chevronUp" : "chevronDown"}`} aria-hidden="true" />
-            </button>
-            {recentIncidentsOpen && (
-              <div className="compactIncidentList recentIncidentList semanticIncidentMenu" id="recent-incident-menu" role="menu">
-                {resolvedIncidents.length > 0 ? (
-                  resolvedIncidents.map((incident) => (
-                    <IncidentReportRow
-                      incident={incident}
-                      key={incident.incidentId}
-                      onSelect={() => setSelectedIncident(incident)}
-                      statusClassName={incident.status.toLowerCase() === "active" ? "statusIncident" : "statusOperational"}
-                    />
-                  ))
-                ) : (
-                  <p className="emptyState">No incident reports are available.</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-      {selectedIncident ? (
-        <IncidentDetailModal incident={selectedIncident} onClose={() => setSelectedIncident(null)} />
-      ) : null}
+      <MeetingServiceStatus apiBaseUrl={apiBaseUrl} token={sessionToken} />
         </>
       )}
 
@@ -4163,10 +3430,10 @@ function Dashboard({
         <CreditRequiredModal
           prompt={subscriptionPrompt}
           onClose={onDismissSubscriptionPrompt}
-          onOpenAccount={() => {
+          onOpenSettings={() => {
             onDismissSubscriptionPrompt();
             setAccountOpen(false);
-            onNavigate("account");
+            onNavigate("settings");
           }}
         />
       )}
@@ -4182,7 +3449,7 @@ function MeetingHealthMetric({
 }: {
   icon: React.ReactNode;
   label: React.ReactNode;
-  tone: "good" | "warning" | "poor";
+  tone: "good" | "warning" | "poor" | "neutral";
   value: string;
 }) {
   return (
@@ -4263,17 +3530,18 @@ function ParticipantTelemetryDetail({
 
   return (
     <>
-      <tr className="telemetryDetailRow">
-        <td className="telemetryDetailLead" colSpan={3}>
+      <div className="telemetryDetailRow">
+        <div className="telemetryDetailLead">
           {recommendation ? <p>{recommendation}</p> : null}
           <SignalScoreTrendChart
             error={signalScoreTrendError}
             isLoading={signalScoreTrendLoading}
             trend={signalScoreTrend}
           />
-        </td>
+        </div>
         {telemetryGroups.map((group) => (
-          <td className="telemetryDetailCell" key={group.title}>
+          <section className="telemetryDetailCell" key={group.title} aria-label={`${group.title} telemetry`}>
+            <h4>{group.title}</h4>
             <div className="telemetryGroupMetrics" aria-label={`${group.title} telemetry`}>
               {group.metrics.map((item) => (
                 <div className="metricItem" key={item.label}>
@@ -4287,41 +3555,35 @@ function ParticipantTelemetryDetail({
                 </div>
               ))}
             </div>
-          </td>
-        ))}
-        <td className="telemetryDetailActionCell"></td>
-      </tr>
-      <tr className="telemetryInsightsRow">
-        <td colSpan={6}>
-          <section className="telemetryInsights" aria-label="Participant telemetry insights">
-            <div className="telemetryInsightsHeader">
-              <img className="signal-reccommendation-icon-svg telemetryInsightsIcon" src={signalRecommendationIcon} alt="" aria-hidden="true" />
-              <h3>Insights</h3>
-            </div>
-            {hasActiveAnalysisSession ? (
-              <>
-                <div className="telemetryInsightOverall">
-                  <span>Overall recommendations</span>
-                  {telemetryInsights.recommendations.length > 0 ? telemetryInsights.recommendations.map((recommendation) => (
-                    <p key={recommendation.text}>- {recommendation.text}</p>
-                  )) : <p>{telemetryInsights.overall}</p>}
-                </div>
-                <div className="telemetryInsightCategories">
-                  {telemetryInsights.categories.map((insight) => (
-                    <article className="telemetryInsightItem" key={insight.title}>
-                      <span style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.title}</span>
-                      <p style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.text}</p>
-                    </article>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="telemetryInsightsEmpty">Run analysis to gather insights.</p>
-            )}
           </section>
-        </td>
-        <td className="telemetryDetailActionCell"></td>
-      </tr>
+        ))}
+      </div>
+      <section className="telemetryInsights" aria-label="Participant telemetry insights">
+        <div className="telemetryInsightsHeader">
+          <img className="signal-reccommendation-icon-svg telemetryInsightsIcon" src={signalRecommendationIcon} alt="" aria-hidden="true" />
+          <h3>Insights</h3>
+        </div>
+        {hasActiveAnalysisSession ? (
+          <>
+            <div className="telemetryInsightOverall">
+              <span>Overall recommendations</span>
+              {telemetryInsights.recommendations.length > 0 ? telemetryInsights.recommendations.map((recommendation) => (
+                <p key={recommendation.text}>- {recommendation.text}</p>
+              )) : <p>{telemetryInsights.overall}</p>}
+            </div>
+            <div className="telemetryInsightCategories">
+              {telemetryInsights.categories.map((insight) => (
+                <article className="telemetryInsightItem" key={insight.title}>
+                  <span style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.title}</span>
+                  <p style={{ color: getTelemetryInsightColor(insight.severity) }}>{insight.text}</p>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="telemetryInsightsEmpty">Run analysis to gather insights.</p>
+        )}
+      </section>
     </>
   );
 }
@@ -4346,7 +3608,6 @@ export default function App() {
   const [subscriptionPrompt, setSubscriptionPrompt] = React.useState<SubscriptionPrompt | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isAddingTestingCredit, setIsAddingTestingCredit] = React.useState(false);
   const [busyState, setBusyState] = React.useState<AuthBusyState>("idle");
   const [isRunningInTeams, setIsRunningInTeams] = React.useState(false);
   const [hasCheckedTeamsContext, setHasCheckedTeamsContext] = React.useState(false);
@@ -4359,30 +3620,6 @@ export default function App() {
   const [pendingTeamsSsoAccountCreation, setPendingTeamsSsoAccountCreation] = React.useState<PendingTeamsSsoAccountCreation | null>(null);
   const [activePage, setActivePage] = React.useState<InAppPage>("dashboard");
   const isMountedRef = React.useRef(true);
-
-  const parseCreditError = React.useCallback((caught: unknown): boolean => {
-    const errorWithBody = caught as Error & { body?: string };
-
-    if (!errorWithBody.body) {
-      return false;
-    }
-
-    try {
-      const parsed = JSON.parse(errorWithBody.body) as { requiredCredits?: number; availableCredits?: number };
-
-      if (typeof parsed.requiredCredits === "number" && typeof parsed.availableCredits === "number") {
-        setSubscriptionPrompt({
-          requiredCredits: parsed.requiredCredits,
-          availableCredits: parsed.availableCredits,
-        });
-        return true;
-      }
-    } catch {
-      return false;
-    }
-
-    return false;
-  }, []);
 
   React.useEffect(() => {
     applyTeamsTheme(getEffectiveTheme(teamsTheme, themePreference));
@@ -4403,28 +3640,6 @@ export default function App() {
       isMountedRef.current = false;
       window.removeEventListener("popstate", updateRoute);
     };
-  }, []);
-
-  const mergeCredits = React.useCallback((credits: number) => {
-    setAccountUser((current) =>
-      current
-        ? {
-            ...current,
-            credits,
-          }
-        : current
-    );
-    setDashboard((current) =>
-      current
-        ? {
-            ...current,
-            currentUser: {
-              ...current.currentUser,
-              credits,
-            },
-          }
-        : current
-    );
   }, []);
 
   const refreshAccountInfo = React.useCallback(
@@ -4880,82 +4095,14 @@ export default function App() {
     [apiBaseUrl, completeAuth, pendingProfileAuth]
   );
 
-  const analyzeUser = React.useCallback(
-    async (targetUserId: number) => {
-      if (!dashboard || !sessionToken) {
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-      setSubscriptionPrompt(null);
-
-      try {
-        const data = await fetchJson<IndividualAnalysisResult>(`${apiBaseUrl}/api/analysis/user`, {
-          method: "POST",
-          headers: buildAuthHeaders(sessionToken),
-          body: JSON.stringify({ meetingSessionId: dashboard.meetingSessionId, targetUserId }),
-        });
-        setAnalysis({ mode: "user", data });
-        mergeCredits(data.remainingCredits);
-        await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-      } catch (caught) {
-        if (!parseCreditError(caught)) {
-          setError(caught instanceof Error ? caught.message : String(caught));
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [apiBaseUrl, dashboard, mergeCredits, parseCreditError, refreshDashboard, sessionToken]
-  );
-
-  const analyzeAll = React.useCallback(async () => {
-    if (!dashboard || !sessionToken) {
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setSubscriptionPrompt(null);
-
-    try {
-      const data = await fetchJson<FullAnalysisResult>(`${apiBaseUrl}/api/analysis/full`, {
-        method: "POST",
-        headers: buildAuthHeaders(sessionToken),
-        body: JSON.stringify({ meetingSessionId: dashboard.meetingSessionId }),
-      });
-      setAnalysis({ mode: "full", data });
-      mergeCredits(data.remainingCredits);
-      await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-    } catch (caught) {
-      if (!parseCreditError(caught)) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiBaseUrl, dashboard, mergeCredits, parseCreditError, refreshDashboard, sessionToken]);
-
   const inviteParticipants = React.useCallback(async () => {
-    if (!dashboard || !sessionToken) {
-      return;
-    }
-
-    setIsLoading(true);
     setError(null);
-
     try {
-      await fetchJson(`${apiBaseUrl}/api/TeamsMeetings/${dashboard.meetingSessionId}/invite`, {
-        method: "POST",
-        headers: buildAuthHeaders(sessionToken),
-      });
+      openMeetingInvitations(meetingContext?.teamsMeetingId ?? "", setError);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setIsLoading(false);
     }
-  }, [apiBaseUrl, dashboard, sessionToken]);
+  }, [meetingContext]);
 
   const refreshClientPromptStatus = React.useCallback(async () => {
     if (!dashboard || !sessionToken) {
@@ -4971,89 +4118,22 @@ export default function App() {
     }
   }, [dashboard, refreshDashboard, sessionToken]);
 
-  const addTestingCredit = React.useCallback(async () => {
-    if (!sessionToken) {
-      return;
-    }
-
-    setIsAddingTestingCredit(true);
-    setError(null);
-
-    try {
-      const response = asRecord(
-        await fetchJson<unknown>(`${apiBaseUrl}/api/User/credits/testing/add-one`, {
-          method: "POST",
-          headers: buildAuthHeaders(sessionToken),
-        })
-      );
-      const credits = readNumber(response, mergeCurrentUser(dashboard?.currentUser ?? normalizeCurrentUser(null), accountUser).credits, "credits", "Credits", "userCredits", "UserCredits");
-      mergeCredits(credits);
-      await refreshAccountInfo(sessionToken);
-      if (dashboard) {
-        await refreshDashboard(dashboard.meetingSessionId, sessionToken);
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setIsAddingTestingCredit(false);
-    }
-  }, [accountUser, apiBaseUrl, dashboard, mergeCredits, refreshAccountInfo, refreshDashboard, sessionToken]);
-
-  const applyAccountUpdateResponse = React.useCallback((response: AuthResponse) => {
-    const nextToken = getSignalTunerSessionToken(response);
-    const nextUser = normalizeAuthCurrentUser(response);
-
-    window.localStorage.setItem(SIGNALTUNER_SESSION_TOKEN_KEY, nextToken);
-    setSessionToken(nextToken);
-    setAccountUser(nextUser);
-    setDashboard((current) =>
-      current
-        ? {
-            ...current,
-            currentUser: mergeCurrentUser(nextUser, current.currentUser),
-          }
-        : current
-    );
-
-    return { nextToken, nextUser };
-  }, []);
-
   const submitAccountProfileUpdate = React.useCallback(
-    async (firstName: string, lastName: string): Promise<CurrentUser> => {
-      if (!apiBaseUrl || !sessionToken) {
+    async (firstName: string, lastName: string, email: string): Promise<void> => {
+      const currentUser = mergeCurrentUser(dashboard?.currentUser ?? normalizeCurrentUser(null), accountUser);
+      if (!apiBaseUrl || !sessionToken || !currentUser.userId) {
         throw new Error("SignalTuner is temporarily unavailable. Please try again.");
       }
-
-      setError(null);
-      const response = await completeUserProfile(apiBaseUrl, sessionToken, { firstName, lastName });
-      const { nextToken, nextUser } = applyAccountUpdateResponse(response);
-
-      if (dashboard) {
-        await refreshDashboard(dashboard.meetingSessionId, nextToken);
-      }
-
-      return nextUser;
+      await saveAccountProfile(apiBaseUrl, sessionToken, currentUser.userId, firstName, lastName, email);
+      const updated = { ...currentUser, firstName: firstName.trim(), lastName: lastName.trim(),
+        email: email.trim().toLowerCase(), displayName: `${firstName.trim()} ${lastName.trim()}` };
+      setAccountUser(updated);
+      setDashboard(current => current ? { ...current, currentUser: updated } : current);
+      // The profile save is already complete. A background refresh failure must not
+      // report it as failed or invite duplicate saves. Keep the valid session token.
+      void refreshAccountInfo(sessionToken, updated).catch(() => {});
     },
-    [apiBaseUrl, applyAccountUpdateResponse, dashboard, refreshDashboard, sessionToken]
-  );
-
-  const submitAccountEmailUpdate = React.useCallback(
-    async (email: string): Promise<CurrentUser> => {
-      if (!apiBaseUrl || !sessionToken) {
-        throw new Error("SignalTuner is temporarily unavailable. Please try again.");
-      }
-
-      setError(null);
-      const response = await updateAccountEmail(apiBaseUrl, sessionToken, email);
-      const { nextToken, nextUser } = applyAccountUpdateResponse(response);
-
-      if (dashboard) {
-        await refreshDashboard(dashboard.meetingSessionId, nextToken);
-      }
-
-      return nextUser;
-    },
-    [apiBaseUrl, applyAccountUpdateResponse, dashboard, refreshDashboard, sessionToken]
+    [accountUser, apiBaseUrl, dashboard, refreshAccountInfo, sessionToken]
   );
 
   const submitAccountPasswordUpdate = React.useCallback(
@@ -5228,17 +4308,12 @@ export default function App() {
           dashboard={displayDashboard}
           error={error}
           isLoading={isLoading}
-          isAddingTestingCredit={isAddingTestingCredit}
-          onAddTestingCredit={addTestingCredit}
-          onAnalyzeAll={analyzeAll}
-          onAnalyzeUser={analyzeUser}
           onInvite={inviteParticipants}
           onNavigate={setActivePage}
           onDismissSubscriptionPrompt={() => setSubscriptionPrompt(null)}
           onSendSupportEmail={submitSupportRequest}
           onSignOut={signOut}
           onThemePreferenceChange={setThemePreference}
-          onUpdateEmail={submitAccountEmailUpdate}
           onUpdatePassword={submitAccountPasswordUpdate}
           onUpdateProfile={submitAccountProfileUpdate}
           sessionToken={sessionToken}

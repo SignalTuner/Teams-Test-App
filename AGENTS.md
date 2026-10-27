@@ -106,6 +106,7 @@ Use these ownership rules:
 |---|---|
 | API implementation, server-side authorization, shared server business rules | SignalTuner backend |
 | Canonical MySQL schema and database migrations | `C:\Users\georg\source\repos\signaltuner-back\database` |
+| Personal service monitoring selections | Backend `UserServiceSelections`, shared by the website and WPF for the same account; legacy team `ServiceSelections` remain separate |
 | Windows telemetry collection and desktop behavior | SignalTuner WPF local client |
 | Browser-specific UI and routing | SignalTuner website frontend |
 | SEO-friendly public status/front-door pages and domain-specific public website variants | SignalTuner service-status SEO frontend, aligned with SignalTuner website frontend style and shared browser functionality |
@@ -250,6 +251,18 @@ Treat development, test, staging, and production as distinct environments.
 
 When adding a configuration key, document its owner, purpose, allowed environments, default behavior, whether it is secret, and every consuming project.
 
+### Azure deployment instructions
+
+Whenever deployment requires a change in Azure, explicitly tell the user where to make it. Include this in the deployment guidance and final response, not only in linked documentation.
+
+- Identify the affected SignalTuner component, Azure service/resource type, and target resource name when known, including the environment and deployment slot when applicable.
+- Give the Azure portal navigation path to the relevant setting or operation. Distinguish backend App Service settings from frontend hosting, Microsoft Entra app registrations, Azure Bot resources, and other Azure services.
+- State the exact setting/key or operation, the required non-secret value or authoritative source of that value, and whether to add, update, or remove it. Never expose secret values.
+- Explain any required save/apply, restart, consent, or redeployment step, its order relative to application deployment, and how to verify the change.
+- If the resource name or location is not known, say so and explain how to identify the correct resource; do not guess or give only a vague instruction such as "configure this in Azure."
+
+This is a reporting requirement, not permission to change Azure resources or deploy without the user's authorization.
+
 ## Security and privacy
 
 SignalTuner processes user, device, network, account, meeting, and telemetry information. Treat this data as sensitive.
@@ -311,6 +324,149 @@ Use these terms consistently unless an authoritative existing contract requires 
 - **Credit**: a metered unit used by applicable meeting/analysis functionality.
 
 When an existing database/API name differs, preserve compatibility and map it clearly rather than silently creating a competing term.
+
+### Team roles and team-owned report credits (confirmed schema, 2026-10-16)
+
+SignalTuner team roles are Owner, Admin, and Member; they are separate from
+Microsoft Teams meeting roles. Owner is the canonical `Teams.team_admin` user.
+The backend owns role authorization, invitation approval, credit allocation and
+request decisions. Members require per-analysis target approval; same-team Owners
+and Admins do not. Credits allocated to a member or the Owner/Admin general fund
+belong to the team; unused allocations return to its fund when a member leaves.
+See `signaltuner-back/docs/team-roles-and-credits.md` for the API, compatibility,
+financial invariants, and coordinated release order. On 2026-10-16 the user
+confirmed all pending migrations applied, including
+`20261016_1600_team_roles_and_credit_wallets.sql` and
+`20261016_1200_remove_low_signal_email_alerts.sql`. Both are recorded under the
+backend's `database/migrations/applied`; `schema.sql` reflects the team-role,
+wallet/approval/audit additions and removal of retired low-signal alert columns.
+No SQL migrations remain pending as of that confirmation. The user separately
+confirmed backend deployment and working member credit totals; other client
+release and end-to-end verification status remains separate.
+
+### Single desktop sessions and team analysis history (confirmed schema, 2026-10-21)
+
+The backend owns the DS1 per-desktop credential and `sign_out_requested` flag.
+Replacement revokes the former desktop before authorizing the new one. Updated
+WPF polls the flag and clears local sign-in; an offline desktop does so on reconnect.
+Website/Teams must not receive physical device IDs and use server-selected desktop
+analysis targets. See `signaltuner-back/docs/desktop-sessions.md` for API contracts,
+legacy-client restrictions, validation and rollback.
+
+On 2026-10-21, the user confirmed that both remaining migrations ran successfully
+against the live database: `20261021_1200_single_desktop_session.sql` and
+`20261021_1800_team_analysis_batches.sql`. Both are recorded unchanged under
+the backend's `database/migrations/applied`; `schema.sql` includes
+`DesktopClientSessions` and `TeamAnalysisBatches`. No SQL migrations remain
+pending at this confirmation. Team analysis history retains the original roster
+for full-team completion summaries; see `signaltuner-back/docs/team-analysis.md`.
+This records user confirmation, not an independent live database inspection.
+
+Application deployment and end-to-end verification remain separate: deploy all
+backend instances before releasing the updated WPF and browser/Teams clients.
+For team analysis history, deploy the backend before the website; no additional
+WPF/Teams/SEO release is required for that feature. Retain the additive tables
+and desktop-session enforcement during rollback as documented.
+### Online administrative account deletion (confirmed, 2026-10-22)
+
+The backend owns the online deletion barrier and the administrative purge script.
+The user confirmed applying
+`signaltuner-back/database/migrations/applied/20261022_1500_online_account_deletion.sql`
+and deploying the backend. This records user confirmation, not independent live
+inspection. `schema.sql` includes the guard tables, routines and 82 triggers;
+no SQL migrations remain pending at this confirmation. Confirm every backend
+instance is updated, then explicitly set `@purge_backend_ready=TRUE` in the
+private `database/operations/remove_user.sql` copy. Services can remain running
+during a purge after that rollout. No client release is needed.
+Shared hardware defaults to refusal; the administrative script supports the
+explicit `@purge_preserve_shared_devices=TRUE` retention option after diagnostic
+review. It preserves peer history and ambiguous device-only logs, detaches only
+the target's shared-device mapping transactionally, and keeps account/email
+suppression. This is not complete erasure of shared-device history; account
+identity collisions still stop the purge. No new migration or deployment is
+required for this option. See the backend operations README for limits.
+See `signaltuner-back/docs/online-account-deletion.md` for concurrency, privacy,
+retained suppression markers, blocked re-registration, external billing, tests
+and rollback. Never manually remove guard objects/markers during rollback after a
+committed purge: late events could recreate deleted records. Future account-bearing
+schema changes must update the guard generator, purge coverage and tests together.
+No production migration, deployment or deletion has been performed or confirmed.
+
+### Account lifecycle and free credits (confirmed schema, 2026-10-23)
+
+On 2026-10-23 the user confirmed all pending migrations applied, including
+`20261022_1900_account_lifecycle.sql` and `20261023_1200_free_account_credits.sql`.
+Both are retained unchanged under the backend's `database/migrations/applied`;
+no SQL migrations remain pending at this confirmation. This records user
+confirmation, not independent live inspection or application deployment.
+`schema.sql` now includes Users creation time and monthly evaluation columns,
+AccountRegistrationEmails, AccountCancellationTokens, FreeCreditEligibility,
+and the guarded self-deletion routine. Legacy creation timestamps remain unknown.
+
+Signup remains immediate without email verification. Welcome cancellation and
+Settings deletion require explicit confirmation. Billing-bearing accounts require
+assisted deletion. Email reuse releases only the exact deleted email mapping;
+old account/device/billing guards remain. See `signaltuner-back/docs/account-lifecycle.md`.
+Verify website routes and all backend instances before enabling
+`AccountLifecycle:AllowEmailReuse` (default false). Keep the new legacy Stripe
+webhook protection on rollback after any reuse.
+
+The backend owns credit eligibility: first-time normalized emails receive three
+personal credits; deleted/reused emails receive zero signup credits. On the first
+UTC day of the month, active accounts with exactly zero personal credits receive
+one, with durable per-email and per-account evaluation markers. New/recreated
+accounts enter monthly eligibility in the following month. Team wallets and paid
+monthly allowances are unchanged. Retain hash-only FreeCreditEligibility history
+across purges. See `signaltuner-back/docs/free-account-credits.md`.
+Deploy every backend instance for this policy and keep a worker running on the
+first UTC day. Existing API shapes are unchanged; no additional client release is
+required for free credits. Retain eligibility data and signup checks on rollback.
+Application deployment and hosted verification remain separate from the database
+confirmation; no production SQL or deployment was performed by the agent.
+
+### Teams SSO and meeting permissions (approved configuration, 2026-10-25)
+
+The backend owns validation for both Teams sign-in routes. Tokens must be signed,
+valid for the configured application and one explicitly trusted Teams tenant,
+and carry the Teams delegated scope/client claims. Client context and email/UPN alone are not identity proof.
+The Teams manifest's bot and `webApplicationInfo.id` must align for meeting RSC;
+SSO resource URIs are environment-specific. The user approved this correction and
+the agent configured the existing Entra bot registration for local tab SSO.
+See `signaltuner-back/docs/teams-sso.md` for exact settings, intentional legacy
+restrictions, account matching, tests, rollout, and rollback. On 2026-10-25 the
+user confirmed publication of the updated backend; deployed binaries were not
+independently verified. On 2026-10-26 the user confirmed package 1.0.15 installation;
+fresh token diagnostics and Azure logs identify a Teams/bot tenant mismatch and
+issuer rejection. The user approved the backend-only `TeamsSso:TenantId` override;
+the agent saved and verified the production Azure setting on 2026-10-26. The user
+subsequently confirmed SSO works again; all-instance deployment was not independently
+inspected. When absent the setting defaults to
+`MicrosoftAppTenantId`; an invalid explicit value fails closed. See the SSO document
+for exact tenant values and rollout. Bot invitation access remains unresolved.
+No database migration is involved. Do not roll back to unsigned-token or UPN-only sign-in handling.
+
+### Teams meeting website projection (implemented, 2026-10-26)
+
+The backend projects existing TeamsMeetingSessions/TeamsMeetingParticipants into
+`GET /api/meetings?includeTeams=true` for the same authenticated SignalTuner account.
+Teams website IDs use `teams-<session ID>` and retain the numeric meetingSessionId
+for analysis. Microsoft Teams is service ID 3. Membership remains historical;
+bot-only roster entries do not enroll accounts. Best-effort Teams role labels are
+shared display metadata, separate from SignalTuner team roles and authorization.
+The first signed-in participant is no longer guessed to be Organizer.
+See `signaltuner-back/docs/teams-website-meetings.md` for API compatibility, privacy,
+tests and rollback. Deploy backend before website; no SQL migration, Azure setting,
+new permission, Teams package, WPF release or SEO release is required for this
+feature. Implementation/testing does not confirm deployment or live verification.
+
+Title capture correction: installed TeamsJS meeting-details methods are internal.
+The backend now uses the existing bot to recover titles on join and website reads,
+using only adapter-authenticated TeamsBotActivityLog routing metadata and matching
+meeting/conversation IDs. Do not replace that source with pre-authentication request
+logs. This correction requires backend publishing only, with no Azure settings,
+SSO changes, migration or Teams package. Missing/purged routing history needs a new
+authenticated bot activity (for example Invite > Load Participants). See the same
+backend document for bounded retries, privacy, validation and rollback.
 
 ## Confirmation gates
 

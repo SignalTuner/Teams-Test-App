@@ -1,7 +1,7 @@
 {
-  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.26/MicrosoftTeams.schema.json",
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.27/MicrosoftTeams.schema.json",
   "manifestVersion": "1.27",
-  "version": "1.0.13",
+  "version": "1.0.15",
   "id": "${{TEAMS_APP_ID}}",
   "developer": {
     "name": "My App, Inc.",
@@ -25,15 +25,15 @@
   "supportsChannelFeatures": "tier1",
   "bots": [
   {
-    "botId": "d3f0801c-8c8e-4c90-a3b0-cee3c1c40fea",
+    "botId": "e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999",
     "scopes": ["personal", "groupChat", "team"],
     "isNotificationOnly": false,
     "supportsFiles": false
   }
 ],
 "webApplicationInfo": {
-        "id": "e9e69ad8-84c2-4469-9697-949c54b98f09",
-        "resource": "api://localhost:3978/e9e69ad8-84c2-4469-9697-949c54b98f09"
+        "id": "e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999",
+        "resource": "${{TEAMS_SSO_RESOURCE}}"
 }
 ,
   "composeExtensions": [],
@@ -65,6 +65,7 @@
   },
   "permissions": ["identity"],
   "validDomains": [
+    "${{TAB_DOMAIN}}",
     "teams.signaltuner.com",
     "www.signaltuner.com",
     "signaltuner-back.azurewebsites.net"

@@ -39,6 +39,11 @@
         "clean": "rimraf ./dist",
         "dev": "npm run build:frontend && nodemon",
         "build": "tsup && npm run build:frontend",
-        "build:frontend": "vite build --outDir dist/client"
+        "build:frontend": "vite build --outDir dist/client",
+        "test:meeting-analysis": "node --test tests/meetingAnalysis.test.cjs",
+        "test:analysis-live": "node --test tests/analysisLive.test.cjs",
+        "test:service-status": "node --test tests/serviceStatus.test.cjs",
+        "test:meeting-invitations": "node --test tests/meetingInvitations.test.cjs",
+        "test:settings": "node --test tests/settingsAccount.test.cjs"
     }
 }

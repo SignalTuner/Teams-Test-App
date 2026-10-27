@@ -1,0 +1,40 @@
+.remoteAnalysisAction { display: inline-block; margin: 5px 0; }
+.remoteAnalysisDialog { color-scheme: light dark; width: min(520px, calc(100vw - 40px)); max-height: calc(100vh - 50px); overflow-y: auto; box-sizing: border-box; border: 1px solid #8992a5; border-radius: 12px; padding: 24px; text-align: left; font: 14px/1.5 system-ui, sans-serif; }
+.remoteAnalysisDialog::backdrop { background: rgb(0 0 0 / 55%); }
+.remoteAnalysisDialog header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.remoteAnalysisDialog h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+.remoteAnalysisDialog h3 { font-size: 16px; }
+.remoteAnalysisWaitingDots { display: inline-flex; }
+@media (prefers-reduced-motion: no-preference) {
+  .remoteAnalysisWaitingDots > span { animation: remote-analysis-waiting-dot 1.5s ease-in-out infinite; }
+  .remoteAnalysisWaitingDots > span:nth-child(2) { animation-delay: -.4s; }
+  .remoteAnalysisWaitingDots > span:nth-child(3) { animation-delay: -.2s; }
+}
+@keyframes remote-analysis-waiting-dot {
+  0%, 80%, 100% { opacity: .2; }
+  40% { opacity: 1; }
+}
+.remoteAnalysisDialog button, .remoteAnalysisDialog select { font: inherit; padding: 7px 12px; border: 1px solid #8992a5; border-radius: 6px; cursor: pointer; }
+.remoteAnalysisDialog button:disabled { cursor: default; opacity: .55; }
+.remoteAnalysisDialog select { display: block; width: 100%; margin-top: 6px; }
+.remoteAnalysisDialog footer { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 20px; }
+.remoteAnalysisError { color: #b82932; background: #fff0f0; border-radius: 6px; padding: 10px; }
+.remoteAnalysisInline { min-width: 0; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--notice) 52%, var(--panel)); }
+.remoteAnalysisInline > .remoteAnalysisToggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 18px 28px 6px; border: 0; border-radius: 0; background: transparent; color: var(--ink); text-align: left; font-family: inherit; font-size: 13px; font-weight: 600; line-height: 19px; cursor: pointer; }
+/* Match the website: the collapsed 55px header is 20% shorter at 44px. */
+.remoteAnalysisInline > .remoteAnalysisToggle[aria-expanded="false"] { padding-block: 12.5px; }
+.remoteAnalysisToggle > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.remoteAnalysisInlineBody { padding: 0 28px 24px; color: var(--ink); font-size: 14px; line-height: 1.5; }
+.remoteAnalysisInlineBody > p:first-child, .remoteAnalysisSummary > p:first-child { margin-top: 0; }
+.remoteAnalysisInlineBody .telemetryDetailRow { padding-inline: 0; border-top: 0; background: transparent; }
+.remoteAnalysisInlineBody > section > h3 { font-size: 16px; }
+.remoteAnalysisInlineBody footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.remoteAnalysisInlineBody footer button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+.remoteAnalysisInlineBody footer button:disabled { cursor: default; opacity: .55; }
+.remoteAnalysisInlineBody .remoteAnalysisProgress { margin: 0; color: #3BB537; font-size: 13px; font-weight: 400; }
+.remoteAnalysisInlineBody .remoteAnalysisProgress ~ .live-analysis { margin-top: 8px; }
+@media (max-width: 600px) {
+  .remoteAnalysisInline > .remoteAnalysisToggle { padding: 16px 16px 6px; }
+  .remoteAnalysisInline > .remoteAnalysisToggle[aria-expanded="false"] { padding-block: 10.9px; }
+  .remoteAnalysisInlineBody { padding: 0 16px 20px; }
+}

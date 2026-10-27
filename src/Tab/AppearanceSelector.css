@@ -1,0 +1,34 @@
+.appearanceSelector {
+  --appearance-border: #d5dfec;
+  --appearance-background: #f0f4fa;
+  --appearance-selected: #fff;
+  --appearance-text: #172033;
+  --appearance-secondary: #52617a;
+  --appearance-focus: #245da7;
+  display: flex;
+  flex-shrink: 0;
+  width: fit-content;
+  padding: 4px;
+  border: 1px solid var(--appearance-border);
+  border-radius: 8px;
+  background: var(--appearance-background);
+}
+:root[data-teams-theme="dark"] .appearanceSelector {
+  --appearance-border: #3a4558;
+  --appearance-background: #182536;
+  --appearance-selected: #1f2937;
+  --appearance-text: #f5f7fb;
+  --appearance-secondary: #b8c2d4;
+  --appearance-focus: #93c5fd;
+}
+:root[data-teams-theme="contrast"] .appearanceSelector {
+  --appearance-border: #fff;
+  --appearance-background: #000;
+  --appearance-selected: #000;
+  --appearance-text: #fff;
+  --appearance-secondary: #fff;
+  --appearance-focus: #ffff00;
+}
+.appearanceSelector button { min-height: 38px; padding: 8px 18px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--appearance-secondary); font: inherit; font-size: 14px; cursor: pointer; }
+.appearanceSelector button[aria-pressed="true"] { background: var(--appearance-selected); border-color: var(--appearance-border); color: var(--appearance-text); }
+.appearanceSelector button:focus-visible { outline: 3px solid var(--appearance-focus); outline-offset: 3px; }

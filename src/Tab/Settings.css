@@ -1,0 +1,90 @@
+.settings-page {
+  --settings-canvas: #111827; --settings-surface: #1f2937; --settings-nested: #182536;
+  --settings-border: #3a4558; --settings-text: #f5f7fb; --settings-secondary: #b8c2d4;
+  --settings-accent: #93c5fd; --settings-error: #ffb1ba;
+  padding: 52px 24px 72px;
+  background: var(--settings-canvas); color: var(--settings-text); color-scheme: dark;
+}
+:root:not([data-teams-theme="dark"]):not([data-teams-theme="contrast"]) .settings-page {
+  --settings-canvas: #f6f8fb; --settings-surface: #fff; --settings-nested: #f0f4fa;
+  --settings-border: #d5dfec; --settings-text: #172033; --settings-secondary: #52617a;
+  --settings-accent: #245da7; --settings-error: #b5243b; color-scheme: light;
+}
+.settings-page *, .settings-page *::before, .settings-page *::after { box-sizing: border-box; }
+.settings-inner { max-width: 1120px; margin: 0 auto; }
+.settings-header { margin-bottom: 32px; }
+.settings-header--appearance { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.settings-eyebrow { margin: 0 0 12px; color: var(--settings-accent); font-size: 12px; font-weight: 800; letter-spacing: .15em; }
+.settings-header h1 { margin: 0; color: var(--settings-text); font-size: clamp(32px, 4vw, 44px); line-height: 1.15; letter-spacing: -.035em; }
+.settings-header > p:last-child, .settings-header-copy > p:last-child { margin: 14px 0 0; color: var(--settings-secondary); font-size: 16px; }
+.settings-card { min-width: 0; padding: 28px; border: 1px solid var(--settings-border); border-radius: 12px; background: var(--settings-surface); }
+.settings-card h2 { margin: 0; color: var(--settings-text); font-size: 20px; line-height: 1.3; }
+.settings-card p { color: var(--settings-secondary); font-size: 14px; line-height: 1.6; }
+.settings-card h2 + p { margin: 8px 0 0; }
+.settings-section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.settings-account { padding: 0; overflow: hidden; }
+.settings-account .settings-section-heading { padding: 26px 28px; border-bottom: 1px solid var(--settings-border); }
+.settings-account-grid { display: grid; grid-template-columns: .9fr 1.1fr; }
+.settings-credit-summary, .settings-plan-summary { padding: 28px; }
+.settings-credit-summary { background: var(--settings-nested); border-right: 1px solid var(--settings-border); }
+.settings-card .settings-metric-label { margin: 0 0 14px; color: var(--settings-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
+.settings-card .settings-credit-value { margin: 0; color: var(--settings-text); font-size: 48px; line-height: 1.2; font-weight: 800; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.settings-credit-value span { color: var(--settings-secondary); font-size: 16px; font-weight: 500; letter-spacing: 0; }
+.settings-credit-summary > p:nth-last-child(2) { margin: 12px 0 24px; }
+.settings-plan-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.settings-plan-title h3 { margin: 0; color: var(--settings-text); font-size: 24px; line-height: 1.3; letter-spacing: -.025em; }
+.settings-plan-status { padding: 4px 9px; border: 1px solid var(--settings-border); border-radius: 5px; color: var(--settings-accent); font-size: 12px; font-weight: 700; }
+.settings-plan-summary > p { margin: 10px 0; }
+.settings-plan-summary strong { color: var(--settings-text); }
+.settings-card .settings-plan-note { font-size: 13px; }
+.settings-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-top: 22px; }
+.settings-button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 10px 17px; border: 1px solid var(--settings-border); border-radius: 6px; background: var(--settings-nested); color: var(--settings-text); font: inherit; font-size: 14px; font-weight: 700; line-height: 1.4; text-decoration: none; cursor: pointer; }
+.settings-button--primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.settings-add-credits { gap: 8px; }
+.settings-button--quiet { flex-shrink: 0; background: transparent; }
+.settings-button:hover:not(:disabled) { border-color: var(--settings-accent); color: var(--settings-text); }
+.settings-button--primary:hover:not(:disabled) { background: #1d4ed8; color: #fff; }
+.settings-billing-link { color: var(--settings-accent); font-size: 14px; font-weight: 700; text-decoration: none; }
+.settings-billing-link:hover { text-decoration: underline; }
+.settings-account-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding: 17px 28px; border-top: 1px solid var(--settings-border); color: var(--settings-secondary); font-size: 13px; line-height: 1.6; }
+.settings-account-footer strong { color: var(--settings-text); }
+.settings-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+.settings-form { margin-top: 24px; }
+.settings-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-form label { display: block; margin-bottom: 8px; color: var(--settings-text); font-size: 13px; font-weight: 700; }
+.settings-form input { display: block; width: 100%; min-width: 0; min-height: 44px; margin-bottom: 20px; padding: 11px 12px; border: 1px solid var(--settings-border); border-radius: 6px; background: var(--settings-nested); color: var(--settings-text); font: inherit; font-size: 15px; line-height: 1.4; }
+.settings-name-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.settings-name-fields > div { min-width: 0; }
+.settings-card .settings-field-help { margin: -6px 0 20px; font-size: 12px; }
+.settings-card .settings-message { margin: 16px 0 0; color: var(--settings-accent); }
+.settings-card .settings-message--error, .settings-account-error p { color: var(--settings-error); }
+.settings-account .settings-loading, .settings-account-error { margin: 0; padding: 28px; }
+.settings-account-error p { margin: 0 0 16px; }
+.settings-page button:disabled, .settings-page fieldset:disabled { opacity: .65; cursor: wait; }
+.settings-page :is(button, a, input):focus-visible { outline: 3px solid var(--settings-accent); outline-offset: 3px; }
+.settings-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 760px) {
+  .settings-page { padding: 32px 0 48px; }
+  .settings-account-grid, .settings-details-grid { grid-template-columns: 1fr; }
+  .settings-credit-summary { border-right: 0; border-bottom: 1px solid var(--settings-border); }
+  .settings-card, .settings-credit-summary, .settings-plan-summary { padding: 22px; }
+  .settings-account { padding: 0; }
+  .settings-account .settings-section-heading { padding: 22px; }
+  .settings-section-heading, .settings-header--appearance { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .settings-account-footer { padding: 16px 22px; }
+}
+@media (max-width: 380px) { .settings-name-fields { grid-template-columns: 1fr; gap: 0; } }
+
+/* Preserve the host's accessibility theme and accommodate the meeting sidebar. */
+:root[data-teams-theme="contrast"] .settings-page {
+  --settings-canvas: #000; --settings-surface: #000; --settings-nested: #000;
+  --settings-border: #fff; --settings-text: #fff; --settings-secondary: #fff;
+  --settings-accent: #ffff00; --settings-error: #ffff00;
+}
+:root[data-teams-theme="contrast"] .settings-button--primary { background: #000; border-color: #fff; color: #fff; }
+.settings-page .settings-header-copy { min-width: 0; }
+.settings-page .settings-button { gap: 8px; }
+.settings-page .settings-delete-account { margin-top: 24px; }
+.settings-page .settings-delete-account a { color: var(--settings-accent); }
+.settings-page .settings-form input:read-only { background: var(--settings-nested); color: var(--settings-secondary); }
+.settings-page strong { font-weight: 700; }
