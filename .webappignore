@@ -2,6 +2,9 @@
 .fx
 .deployment
 .localSettings
+.localConfigs
+.agents
+.codex
 .vscode
 *.js.map
 *.ts.map
@@ -12,6 +15,10 @@ CHANGELOG.md
 readme.md
 local.settings.json
 test
+tests
+docs
+scripts
+AGENTS.md
 tsconfig.json
 .DS_Store
 m365agents.yml

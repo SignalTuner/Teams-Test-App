@@ -1,0 +1,13 @@
+<!-- Matches ServicesTabIconCanvas in the WPF MainWindow.xaml. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 421 287" fill="none" stroke="currentColor" stroke-width="20.736" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M50 221V19C50 17 52 15 54 15H367C369 15 371 17 371 19V221"/>
+  <rect x="76" y="40" width="270" height="156" rx="2"/>
+  <path d="M211 40V196M76 118H346" stroke-linecap="butt"/>
+  <g fill="currentColor" stroke="none">
+    <circle cx="144" cy="79" r="18"/>
+    <circle cx="279" cy="79" r="18"/>
+    <circle cx="144" cy="157" r="18"/>
+    <circle cx="279" cy="157" r="18"/>
+  </g>
+  <path d="M25 221H396V229C396 249 380 265 360 265H61C41 265 25 249 25 229V221ZM154 222V239C154 241 156 242 159 242H262C265 242 267 241 267 239V222"/>
+</svg>

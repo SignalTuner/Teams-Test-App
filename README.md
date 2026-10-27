@@ -1,6 +1,16 @@
-# Overview of the Basic Tab template
+# SignalTuner for Microsoft Teams
+
+Public Store preparation: [submission review and release checklist](docs/store-submission.md).
+Source manifest **1.0.16** uses SignalTuner branding without development suffixes.
+Run `npm run validate:store` for read-only source checks. This does not create a
+package or establish production readiness. The public Store blockers and production
+preflight command are documented in the checklist.
 
 SignalTuner documentation: [Temporary activation codes](docs/temporary-activation-codes.md).
+
+The authenticated personal tab includes connectivity, Test/Report analysis, service
+health, historical Teams meetings and account navigation. See
+[Personal dashboard](docs/personal-dashboard.md) for contracts, tests and backend-first deployment.
 
 The Teams Settings and Support pages match the website's content and styling,
 with responsive meeting-sidebar layouts and Teams high-contrast support.
@@ -28,13 +38,13 @@ a meeting-analysis request. Requests time out after eight seconds; loading and
 unavailable states never appear as a zero balance. The backend still enforces all
 analysis charges. This display needs only a Teams frontend rebuild/release.
 
-This template showcases how Microsoft Teams supports the ability to run web-based UI inside "custom tabs" that users can install either for just themselves (personal tabs) or within a team or group chat context.
+SignalTuner provides a personal dashboard and meeting tabs inside Microsoft Teams.
 
-## Get started with the Basic Tab template
+## Develop the Teams app
 
 > **Prerequisites**
 >
-> To run the basic tab template in your local dev machine, you will need:
+> To run SignalTuner on your development machine, you will need:
 >
 > - [Node.js](https://nodejs.org/), supported versions: >=20.
 > - A [Microsoft 365 account for development](https://docs.microsoft.com/microsoftteams/platform/toolkit/accounts)
@@ -46,11 +56,12 @@ This template showcases how Microsoft Teams supports the ability to run web-base
 3. Press F5 to start debugging which launches your app in Teams using a web browser. Select `Debug in Teams (Edge)` or `Debug in Teams (Chrome)`.
 4. When Teams launches in the browser, select the Add button in the dialog to install your app to Teams.
 
-**Congratulations**! You are running an application that can now show a basic web page in Teams, Outlook and the Microsoft 365 app.
+Development and production retain separate environment files and app identities,
+even though their visible product name is now the same. Teams may display its own
+"custom app" label for an uploaded development package; source branding cannot
+remove that platform label. Public Store distribution is a separate release step.
 
-![Basic Tab](https://github.com/user-attachments/assets/e8121c82-ddbc-493f-9afb-34db2a4b8e73)
-
-## What's included in the template
+## Repository layout
 
 | Folder       | Contents                                     |
 | ------------ | -------------------------------------------- |
@@ -60,7 +71,7 @@ This template showcases how Microsoft Teams supports the ability to run web-base
 | `infra`      | Templates for provisioning Azure resources   |
 | `src`        | The source code for the application    |
 
-The following files can be customized and demonstrate an example implementation to get you started.
+The main implementation files are:
 
 | File                             | Contents                                                                                                        |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -78,9 +89,9 @@ The following are Microsoft 365 Agents Toolkit specific project files. You can [
 | `m365agents.yml`       | This is the main Microsoft 365 Agents Toolkit project file. The project file defines two primary things: Properties and configuration Stage definitions. |
 | `m365agents.local.yml` | This overrides `m365agents.yml` with actions that enable local execution and debugging.                                                     |
 
-## Extend the Basic Tab template
+## Microsoft development references
 
-Following documentation will help you to extend the Basic Tab template.
+The following documentation describes the underlying Teams tooling.
 
 - [Add or manage the environment](https://learn.microsoft.com/microsoftteams/platform/toolkit/teamsfx-multi-env)
 - [Create multi-capability app](https://learn.microsoft.com/microsoftteams/platform/toolkit/add-capability)

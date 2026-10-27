@@ -1,0 +1,25 @@
+.configPage { box-sizing: border-box; padding: 8px 16px; background: var(--canvas); color: var(--ink); }
+.configOverview { max-width: 520px; margin-inline: auto; }
+.configOverview h1 { margin: 0; font-size: 20px; line-height: 1.2; font-weight: 700; letter-spacing: -.3px; }
+.configFeatures { display: grid; gap: 10px; margin: 12px 0; padding: 0; list-style: none; }
+.configFeatures li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; align-items: start; }
+.configFeatures h2 { margin: 0 0 3px; font-size: 14px; line-height: 1.3; font-weight: 700; }
+.configFeatures p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.configFeatureIcon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; color: var(--focus); border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line)); background: color-mix(in srgb, var(--blue) 12%, var(--panel)); }
+.configFeatureIcon > span { display: block; width: 22px; height: 22px; background: currentColor; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+/* Exact existing product SVGs; masks apply the dashboard's theme-aware icon color. */
+.configSignalIcon { mask-image: url("./assets/analysis-score.svg"); }
+.configAnalysisIcon { mask-image: url("./assets/progress-arrow.svg"); }
+.configServicesIcon { mask-image: url("./assets/services.svg"); }
+.configInfoNote { display: flex; align-items: flex-start; gap: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.configInfoNote .infoGlyph { margin-top: 1px; color: var(--focus); border-color: currentColor; }
+.configInfoNote p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.configFooter { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.configFooter a { text-underline-offset: 3px; }
+.configFooter a:hover { color: var(--focus); }
+.configFooter a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 2px; }
+@media (max-width: 400px) {
+  .configPage { padding: 8px 14px; }
+  .configOverview h1 { font-size: 20px; }
+  .configFeatures li { gap: 10px; }
+}

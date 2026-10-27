@@ -1,5 +1,5 @@
 {
-    "name": "teamstestapp",
+    "name": "signaltuner-teams",
     "version": "0.1.0",
     "private": true,
     "main": "dist/index",
@@ -35,6 +35,7 @@
         "vite": "^6.2.0"
     },
     "scripts": {
+        "validate:store": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-store-readiness.ps1",
         "dev:teamsfx": "env-cmd --silent -f .localConfigs npm run dev",
         "clean": "rimraf ./dist",
         "dev": "npm run build:frontend && nodemon",
@@ -44,6 +45,8 @@
         "test:analysis-live": "node --test tests/analysisLive.test.cjs",
         "test:service-status": "node --test tests/serviceStatus.test.cjs",
         "test:meeting-invitations": "node --test tests/meetingInvitations.test.cjs",
-        "test:settings": "node --test tests/settingsAccount.test.cjs"
+        "test:settings": "node --test tests/settingsAccount.test.cjs",
+        "test:personal": "node --test tests/personalDashboard.test.cjs",
+        "test:personal-browser": "node --test tests/personalDashboard.browser.cjs"
     }
 }

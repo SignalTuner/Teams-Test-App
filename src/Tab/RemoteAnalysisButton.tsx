@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import AnalysisSection from "./AnalysisSection";
 import "./RemoteAnalysisButton.css";
 import "./MeetingAnalysisButton.css";
 import "./MeetingServiceStatus.css";
@@ -32,7 +33,6 @@ const labels = remoteAnalysisLabels;
 
 export default function RemoteAnalysisButton({ apiBaseUrl, token, targetUserId, targetName, meetingSessionId, backgroundRequest,
   expanded = false, onToggle, onExpand, details, renderInline }: Props) {
-  const bodyId = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -195,12 +195,7 @@ export default function RemoteAnalysisButton({ apiBaseUrl, token, targetUserId, 
       </section>}
     </dialog>}
   </span>;
-  const panel = <section className="remoteAnalysisInline" aria-label={`Analysis for ${targetName}`}>
-    <button type="button" className="remoteAnalysisToggle" aria-expanded={expanded} aria-controls={bodyId} onClick={onToggle}>
-      <span>Analysis for {targetName}</span>
-      <span className="teamsServiceDisclosure" aria-hidden="true" />
-    </button>
-    <div id={bodyId} className="remoteAnalysisInlineBody" hidden={!expanded}>
+  const panel = <AnalysisSection title={`Analysis for ${targetName}`} expanded={expanded} onToggle={onToggle}>
       {inlineProgress && <p className="remoteAnalysisProgress">{request?.state === "Cancelled" ? <AnalysisCanceled /> : <>{labels.Running}<AnalysisCountdown key={request?.requestId} telemetry={telemetry} /></>}</p>}
       {!open && error && <p role="alert" className="remoteAnalysisError">{error}</p>}
       {!open && busy && <p role="status">Updating...</p>}
@@ -209,7 +204,6 @@ export default function RemoteAnalysisButton({ apiBaseUrl, token, targetUserId, 
       {!open && requestStatus}
       {!request && details}
 
-    </div>
-  </section>;
+  </AnalysisSection>;
   return renderInline ? renderInline({ action, panel }) : action;
 }

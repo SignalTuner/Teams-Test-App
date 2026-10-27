@@ -15,7 +15,7 @@ Get-Content -LiteralPath $envFile |
         $envValues[$parts[0]] = $parts[1]
     }
 
-foreach ($required in @("TEAMS_APP_ID", "APP_NAME_SUFFIX", "TAB_ENDPOINT")) {
+foreach ($required in @("TEAMS_APP_ID", "TAB_ENDPOINT")) {
     if (-not $envValues.ContainsKey($required) -or [string]::IsNullOrWhiteSpace($envValues[$required])) {
         throw "Missing $required in env\.env.local."
     }

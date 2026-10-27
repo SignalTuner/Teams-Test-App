@@ -1,0 +1,37 @@
+.personalDashboard { gap: 20px; }
+.personalPanel { padding: 24px; min-width: 0; }
+.personalPanel h2 { margin-top: 0; }
+.personalPanel p { line-height: 1.5; }
+.personalAnalysisCredits { margin: 0; font-size: 13px; color: var(--muted); }
+.personalAnalysisHint { margin: 0; font-size: 12px; color: var(--muted); }
+.personalAnalysisActions p { max-width: 240px; text-align: right; line-height: 1.5; }
+.personalDashboard .personalAnalysisActions > button,
+.personalDashboard .personalAnalysisActions > .remoteAnalysisAction { width: 180px; }
+.personalMeetingList { list-style: none; padding: 0; }
+.personalSectionHeading { margin: 0; font-size: 19px; }
+.personalSectionToggle { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; padding: 8px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: inherit; text-align: left; cursor: pointer; }
+.personalSectionToggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.personalSectionToolbar { display: flex; justify-content: flex-end; padding-top: 16px; margin-top: 8px; border-top: 1px solid var(--line); }
+.personalMeetingList li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; border-bottom: 1px solid #7890aa44; }
+.personalMeetingList h3 { margin: 0; }
+.personalMeetingList button { flex-shrink: 0; }
+.personalMeetingModal { width: min(1240px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); color: var(--ink); font: inherit; overflow: hidden; }
+.personalMeetingModal[open] { display: flex; flex-direction: column; }
+.personalMeetingModal::backdrop { background: rgb(0 0 0 / 55%); }
+.personalMeetingModalHeader { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.personalMeetingModalHeader h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+.personalMeetingModalHeader button { flex-shrink: 0; }
+.personalMeetingModalBody { display: grid; grid-auto-rows: max-content; align-content: start; flex: 1 1 auto; gap: 16px; padding: 24px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.personalAccount { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.personalAccount dt { opacity: .75; font-size: .85rem; }
+.personalAccount dd { margin: 6px 0 0; overflow-wrap: anywhere; }
+.personalAnalysisResult { margin-block: 20px; }
+.personalDashboard .buttonRow { flex-wrap: wrap; }
+.personalDashboard .textButton { font: inherit; color: var(--ink); background: transparent; border: 0; padding: 8px 0; text-decoration: underline; cursor: pointer; }
+.personalDashboard .textButton:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .personalMeetingModalHeader, .personalMeetingModalBody { padding: 16px; }
+  .personalPanel { padding: 16px; }
+  .personalAccount { grid-template-columns: 1fr; }
+  .personalMeetingList li { align-items: flex-start; flex-direction: column; }
+}

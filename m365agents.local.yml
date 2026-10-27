@@ -8,7 +8,7 @@ provision:
   - uses: teamsApp/create
     with:
       # app name
-      name: Teams Test App${{APP_NAME_SUFFIX}}
+      name: SignalTuner
     # Write the information of created resources into environment file for
     # the specified environment variable(s).
     writeToEnvironmentFile:
