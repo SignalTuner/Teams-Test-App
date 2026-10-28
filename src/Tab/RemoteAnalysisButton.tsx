@@ -24,7 +24,7 @@ export const remoteAnalysisLabels: Record<string, string> = {
   Pending: "Waiting for permission on the device", Approved: "Approved — waiting for the device",
   Running: "Five-minute analysis in progress", Completed: "PDF generated",
   Denied: "The device user declined", Cancelled: "Analysis cancelled", Expired: "Request expired",
-  Failed: "Analysis could not finish", NoCredits: "No report credits available in your account",
+  Failed: "Analysis could not finish", NoCredits: "No report allowance is available",
   Queued: "Waiting to send", Sending: "Submitting to email provider", Accepted: "Accepted by email provider",
   Rejected: "Email provider rejected this copy", Uncertain: "Email acceptance could not be confirmed",
 };
@@ -64,6 +64,7 @@ export default function RemoteAnalysisButton({ apiBaseUrl, token, targetUserId, 
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw Object.assign(new Error(response.status === 401 ? "Sign in again to request an analysis."
+      : response.status === 402 ? "No report allowance is available. Test Analysis remains available on supported connected desktops."
       : response.status >= 500 ? "Remote analysis is unavailable. Try again shortly."
       : data.message || "Remote analysis is unavailable. Try again shortly."), { status: response.status });
     return data;
@@ -178,7 +179,7 @@ export default function RemoteAnalysisButton({ apiBaseUrl, token, targetUserId, 
     {backgroundRequest && request && <span className="remoteAnalysisState" aria-live="polite">{labels[request.state] || request.state}</span>}
     {open && <dialog ref={dialog} className="remoteAnalysisDialog" onCancel={() => setOpen(false)} onClose={() => setOpen(false)} aria-label={`Analyze ${targetName}`}>
       <header><h2>Analyze {targetName}</h2><button type="button" aria-label="Close analysis request" onClick={() => setOpen(false)}>×</button></header>
-      <p>A five-minute analysis creates a PDF emailed to you and this user. <strong>Your account pays one report credit.</strong></p>
+      <p>A five-minute analysis creates a PDF emailed to you and this user. <strong>This uses one unit of your report allowance.</strong></p>
       <p>{approvalBasis === "TeamAuthority" ? "As this team's Owner or Admin, you can start analysis without member approval. The device user can stop the analysis."
         : approvalBasis === "MemberApproval" ? "Your teammate must approve each analysis on their device. Saved permissions do not bypass team member approval."
         : "The device user can choose Deny, Just once, or Always. Saved permission applies only to you on that device and can be revoked in their desktop Settings."}</p>

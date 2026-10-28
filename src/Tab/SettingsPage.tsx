@@ -2,19 +2,22 @@ import React, { useEffect, useRef, useState } from "react";
 import AppearanceSelector from "./AppearanceSelector";
 import { loadReportAccount, periodDate, subscriptionStatus, type ReportAccount } from "./settingsAccount";
 import "./Settings.css";
+import { ExternalWebsiteLink, PaymentDisclosure, useExternalCommerce } from "./TeamsHostProvider";
 
 type SettingsUser = { userId: number; firstName?: string | null; lastName?: string | null; email: string | null; hasPassword?: boolean | null };
 type Feedback = { text: string; error?: boolean } | null;
 const BILLING_PORTAL = "https://billing.stripe.com/p/login/8wMdUQfLt1PjdpK5kk";
 
 export default function SettingsPage({ user, apiBaseUrl, token, themePreference, onThemePreferenceChange,
-  onUpdateProfile, onUpdatePassword, validatePassword }: {
+  onUpdateProfile, onUpdatePassword, validatePassword, onOpenSupport }: {
   user: SettingsUser; apiBaseUrl: string; token: string; themePreference: "light" | "dark";
   onThemePreferenceChange: (value: "light" | "dark") => void;
   onUpdateProfile: (firstName: string, lastName: string, email: string) => Promise<void>;
   onUpdatePassword: (password: string) => Promise<string>;
   validatePassword: (password: string) => string | undefined;
+  onOpenSupport: () => void;
 }) {
+  const allowCommerce = useExternalCommerce();
   const [account, setAccount] = useState<ReportAccount | null>(null);
   const [accountError, setAccountError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -105,21 +108,22 @@ export default function SettingsPage({ user, apiBaseUrl, token, themePreference,
           <div><h2 id="settings-account-heading">Account overview</h2><p>Everything you need for your next Connectivity Health Report.</p></div>
           <button type="button" className="settings-button settings-button--quiet" disabled={loading} onClick={() => setAttempt(value => value + 1)}>{loading ? "Refreshing..." : "Refresh balance"}</button>
         </div>
-        {loading && <p role="status" className="settings-loading">Loading your credits and plan...</p>}
+        {loading && <p role="status" className="settings-loading">Loading your report allowance...</p>}
         {accountError && <div className="settings-account-error"><p role="alert">{accountError}</p><button type="button" className="settings-button" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>}
         {account && <>
           <div className="settings-account-grid">
             <div className="settings-credit-summary">
-              <p className="settings-metric-label">Credit balance</p>
-              <p className="settings-credit-value">{account.purchasedCredits.toLocaleString()} <span>{account.purchasedCredits === 1 ? "credit" : "credits"}</span></p>
-              <p>One credit per report. Personal credits never expire.</p>
+              <p className="settings-metric-label">{allowCommerce ? "Credit balance" : "Available report allowance"}</p>
+              <p className="settings-credit-value">{(allowCommerce ? account.purchasedCredits : account.availableReports).toLocaleString()} <span>{allowCommerce ? "credits" : "reports"}</span></p>
+              <p>Each report uses one unit of your report allowance.</p>
               <p>{account.teamAllocatedCredits || 0} allocated team credits &middot; {account.teamFundAvailable || 0} general fund credits available</p>
-              <div className="settings-actions">
-                <a target="_blank" rel="noopener noreferrer" className="settings-button" href="https://www.signaltuner.com/team">Manage team credits</a>
-                <a target="_blank" rel="noopener noreferrer" className="settings-button settings-button--primary settings-add-credits" href="https://www.signaltuner.com/plans"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><ellipse cx="9" cy="6" rx="6" ry="3" /><path d="M3 6v5c0 4 12 4 12 0V6M3 11v5c0 4 12 4 12 0v-5M16 10c7 0 7 6 0 6m5-3v5c0 2-3 3-6 3" /></svg>Buy credits</a>
-              </div>
+              {account.availableReports === 0 && <p>No report allowance is available. Test Analysis remains available on supported connected desktops.</p>}
+              {allowCommerce && <div className="settings-actions">
+                <ExternalWebsiteLink className="settings-button" href="https://www.signaltuner.com/team">Manage team credits on website</ExternalWebsiteLink>
+                <ExternalWebsiteLink className="settings-button settings-button--primary settings-add-credits" href="https://www.signaltuner.com/plans">Buy credits on website</ExternalWebsiteLink>
+              </div>}
             </div>
-            <div className="settings-plan-summary">
+            {allowCommerce && <div className="settings-plan-summary">
               <p className="settings-metric-label">Your plan</p>
               <div className="settings-plan-title"><h3>{subscription?.name || "Pay as you go"}</h3>{subscription && <span className="settings-plan-status">{subscriptionStatus(subscription)}</span>}</div>
               {subscription ? <>
@@ -129,11 +133,12 @@ export default function SettingsPage({ user, apiBaseUrl, token, themePreference,
                 {!monthlyActive && <p>Monthly reports are unavailable. Your credits are still available for reports.</p>}
               </> : <p>Get credits when you need them, or choose a monthly report allowance.</p>}
               <div className="settings-actions">
-                <a target="_blank" rel="noopener noreferrer" className="settings-button" href="https://www.signaltuner.com/plans">View plans</a>
-                {account.isCustomer && <a className="settings-billing-link" href={BILLING_PORTAL} target="_blank" rel="noopener noreferrer">Manage billing <span className="settings-sr-only">(opens in a new tab)</span><span aria-hidden="true">&#8599;</span></a>}
+                <ExternalWebsiteLink className="settings-button" href="https://www.signaltuner.com/plans">View plans on website</ExternalWebsiteLink>
+                {account.isCustomer && <ExternalWebsiteLink className="settings-billing-link" href={BILLING_PORTAL}>Manage billing on Stripe</ExternalWebsiteLink>}
               </div>
-            </div>
+            </div>}
           </div>
+          <PaymentDisclosure className="settings-field-help" />
           <div className="settings-account-footer"><span><strong>{account.availableReports}</strong> reports available in total</span><span>Team credits are used first, then your monthly allowance, then personal credits.</span></div>
         </>}
       </section>
@@ -171,8 +176,13 @@ export default function SettingsPage({ user, apiBaseUrl, token, themePreference,
       </div>
       <section className="settings-card settings-delete-account" aria-labelledby="settings-delete-account-heading">
         <h2 id="settings-delete-account-heading">Delete account</h2>
-        <p>Permanently remove your account. You will review the details and confirm on the next page.</p>
-        <a target="_blank" rel="noopener noreferrer" className="settings-button" href="https://www.signaltuner.com/account/delete">Delete my account</a>
+        {allowCommerce ? <>
+          <p>Permanently remove your account. Review the details and confirm on the website outside Microsoft Teams.</p>
+          <ExternalWebsiteLink className="settings-button" href="https://www.signaltuner.com/account/delete">Delete my account on website</ExternalWebsiteLink>
+        </> : <>
+          <p>To request permanent account deletion, contact SignalTuner support.</p>
+          <button type="button" className="settings-button" onClick={onOpenSupport}>Contact support about account deletion</button>
+        </>}
       </section>
     </div>
   </section>;

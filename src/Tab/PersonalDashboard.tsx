@@ -13,7 +13,7 @@ import type { CurrentUser, TelemetryRecord } from "./dashboardTypes";
 import type { ReportAccount } from "./settingsAccount";
 import "./PersonalDashboard.css";
 
-type Props = Omit<ComponentProps<typeof SettingsPage>, "user"> & {
+type Props = Omit<ComponentProps<typeof SettingsPage>, "user" | "onOpenSupport"> & {
   user: CurrentUser; onSignOut: () => void;
   onSendSupportEmail: (request: { sender: string; subject: string; body: string }) => Promise<string>;
 };
@@ -48,7 +48,7 @@ export default function PersonalDashboard(props: Props) {
   </main>;
   return <main className="pageShell dashboardShell personalDashboard">
     <DashboardHeader user={user} activePage={page} onNavigate={next => { setPage(next); if (next === "dashboard") setSelectedMeeting(null); }} onSignOut={onSignOut} />
-    {page === "settings" && <SettingsPage {...props} user={user} onUpdateProfile={async (...args) => { await props.onUpdateProfile(...args); account.refresh(); }}
+    {page === "settings" && <SettingsPage {...props} user={user} onOpenSupport={() => setPage("support")} onUpdateProfile={async (...args) => { await props.onUpdateProfile(...args); account.refresh(); }}
       onUpdatePassword={async value => { const result = await props.onUpdatePassword(value); account.refresh(); return result; }} />}
     {page === "support" && <SupportPage defaultName={user.displayName} defaultEmail={user.email} onSendSupportEmail={props.onSendSupportEmail}
       themePreference={props.themePreference} onThemePreferenceChange={props.onThemePreferenceChange} />}

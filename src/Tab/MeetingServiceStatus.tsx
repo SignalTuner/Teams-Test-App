@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { ExternalWebsiteLink } from "./TeamsHostProvider";
 import microsoftTeamsLogo from "./assets/microsoft-teams.png";
 import "./MeetingServiceStatus.css";
 
@@ -112,10 +113,10 @@ export function MeetingServiceStatusView({ details, error = "" }: { details: Ser
             <div className="teamsServiceIncidentHeading"><h5>{incident.Title}</h5><span className="teamsServiceIncidentLabel">{label}</span></div>
             <p className="teamsServiceDate">Updated {new Date(incident.PublishDate).toLocaleString()}</p>
             <p className="teamsServiceDescription">{incidentText(incident.Description)}</p>
-            {link && <a href={link} target="_blank" rel="noopener noreferrer">Read provider report ↗</a>}
+            {link && <ExternalWebsiteLink href={link}>Read provider report on website</ExternalWebsiteLink>}
           </article>;
         })}
-        <a className="teamsServiceHistory" href="https://www.signaltuner.com/teamsstatus" target="_blank" rel="noopener noreferrer">See full report history</a>
+        <ExternalWebsiteLink className="teamsServiceHistory" href="https://www.signaltuner.com/teamsstatus">See full report history on website</ExternalWebsiteLink>
       </>}
     </div>
   </section>;

@@ -1,11 +1,14 @@
 # Teams personal dashboard
 
 The existing personal tab validates a saved SignalTuner session with `/api/auth/me`
-independently of meeting context. With no valid session, existing TeamsJS SSO calls
-`/api/User/teams-sso`, supplying null meeting information outside meetings. Identity
-still comes from the validated token. Linking, explicit account creation, legal
-consent and profile completion retain their existing flows. Separate storage
-partitions authenticate independently with SSO; no tokens are passed between frames.
+independently of meeting context. As of 2026-10-27, Teams SSO is temporarily paused
+by `TEAMS_SSO_ENABLED = false` in `src/Tab/App.tsx`: sign-in/account-creation buttons,
+SSO notices and separators are hidden, and automatic and manual token acquisition
+are blocked. With no valid session, use email/password sign-in or email account
+creation. Password reset, legal consent and profile completion remain available.
+Separate storage partitions sign in independently; no tokens pass between frames.
+Existing sessions, including those originally issued through SSO, still restore.
+The backend and manifest SSO contracts remain intact for a later coordinated rollout.
 
 Explicit sign-out suppresses automatic SSO. Transient restoration failures retain
 the token for retry; HTTP 401 clears it. Shared-storage account changes clear
@@ -37,10 +40,16 @@ than two minutes are stale; missing values never fall back to zero or Healthy.
 
 Personal connectivity uses the same participant identity, score/category row and
 disclosure styling as the meeting dashboard. Test Analysis and Analysis + Report
-sit at the right, with available credits underneath. The analysis disclosure sits
+sit at the right, with available report allowance underneath. The analysis disclosure sits
 directly below that row; there is no separate Analysis card, last-update label or
 telemetry-details toggle. Active requests and recovery errors open the disclosure
 automatically. This layout change requires only Teams frontend deployment.
+
+The [Teams mobile commerce policy](teams-mobile-commerce.md) hides direct and
+indirect purchase routes on iOS/Android/iPadOS using TeamsJS host context. Existing
+allowance and entitled reports remain usable; zero allowance does not disable
+supported Test Analysis. Desktop/web external links and consent disclose leaving
+Teams for website/Stripe payment flows. This follow-up changes only the Teams UI.
 
 ## Contracts and recovery
 
@@ -94,7 +103,8 @@ $env:VITE_SIGNALTUNER_API_URL='http://127.0.0.1:4317/backend'
 
 Run `npm run test:personal-browser`. Only the test browser intercepts SDK/API
 responses with synthetic accounts. Optional `PERSONAL_TEST_SCREENSHOTS` sets an
-output directory. Coverage includes restoration/SSO, linking/profile fallbacks,
+output directory. Coverage includes restoration, email sign-in/profile completion,
+hidden SSO controls and absence of automatic token/API calls,
 activation/reconnection, free tests, report retry/recovery, account isolation,
 Settings/Support, historical authorization, the original meeting view and
 390/760/1440px light/dark layouts. This does not verify a live Teams tenant.
@@ -131,14 +141,12 @@ additional backend, schema, Azure configuration or manifest change.
 - Azure: publish through the existing pipeline to **App Service `signaltuner-back`,
   resource group `SignalTuner`**. Verify the intended production slot via **Azure
   portal > App Services > signaltuner-back > Deployment Center > Logs**. No
-  Environment variables or Entra settings change. The Teams host resource/slot is
-  not recorded in checked-in configuration (`AZURE_APP_SERVICE_RESOURCE_ID` is
-  empty). Identify the existing App Service serving `teams.signaltuner.com` under
-  **App Services > [resource] > Custom domains**, verify its resource ID under
-  **Overview > JSON View** against the approved deployment environment, then use
-  its existing code pipeline/zip deployment and verify **Deployment Center > Logs**.
-  Do not provision a replacement or invoke package/publish lifecycle operations.
-- Post-deployment verification: real Teams SSO in separate personal/meeting storage
+  Environment variables or Entra settings change. The Teams frontend now targets
+  DreamHost Apache at `teams.signaltuner.com`; follow [the static hosting guide](dreamhost-hosting.md).
+  No Azure frontend App Service is needed. Do not invoke package/publish lifecycle
+  operations as part of a frontend upload. This hosting conversion requires no
+  additional backend deployment beyond the feature prerequisites above.
+- Post-deployment verification: email/password sign-in with SSO hidden in separate personal/meeting storage
   partitions, activation, full five-minute zero-credit Test, Report reservation/
   consumption/refund and email, history authorization, account changes and Teams
   high-contrast theme. Local checks do not establish hosted readiness.

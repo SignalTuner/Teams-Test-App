@@ -7,6 +7,8 @@ import type { CurrentUser, Issue, TelemetryRecord, SignalScoreTrendResponse } fr
 import { ActivationContext } from "./TemporaryActivationCode";
 import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
+import { initializeTeams } from "./teamsHost";
+import { PaymentDisclosure, useExternalCommerce } from "./TeamsHostProvider";
 
 import "./App.css";
 import "./ConfigPage.css";
@@ -187,6 +189,8 @@ type JsonRecord = Record<string, unknown>;
 
 const SIGNALTUNER_SESSION_TOKEN_KEY = "signaltunerSessionToken";
 const SIGNALTUNER_AUTO_SSO_FAILED_KEY = "signaltunerAutoSsoFailed";
+// Temporarily paused until public-tenant SSO is ready. Keep backend contracts intact.
+const TEAMS_SSO_ENABLED = false;
 const SIGNALTUNER_EXPLICIT_SIGN_OUT_KEY = "signaltunerExplicitSignOut";
 const SIGNALTUNER_THEME_PREFERENCE_KEY = "signaltunerThemePreference";
 const PRIVACY_POLICY_PATH = "/tabs/privacy";
@@ -194,7 +198,6 @@ const TERMS_OF_SERVICE_PATH = "/tabs/terms";
 const LEGAL_DOCUMENT_EFFECTIVE_DATE = "2026-08-12";
 const PASSWORD_REQUIREMENT_TEXT = "Use at least 8 characters, including uppercase, lowercase, number, and symbol.";
 
-let teamsInitializationPromise: Promise<teamsJs.app.Context> | null = null;
 
 function getCurrentYear(): number {
   return new Date().getFullYear();
@@ -360,14 +363,6 @@ function sameTeamsId(left: string | null | undefined, right: string | null | und
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
 }
 
-async function initializeTeams(): Promise<teamsJs.app.Context> {
-  if (!teamsInitializationPromise) {
-    teamsInitializationPromise = teamsJs.app.initialize().then(() => teamsJs.app.getContext());
-  }
-
-  return teamsInitializationPromise;
-}
-
 async function getTeamsMeetingDetails(): Promise<JsonRecord | null> {
   await initializeTeams();
 
@@ -399,6 +394,7 @@ async function getTeamsMeetingDetails(): Promise<JsonRecord | null> {
 }
 
 async function getTeamsSsoToken(): Promise<string> {
+  if (!TEAMS_SSO_ENABLED) throw new Error("Please sign in with email and password.");
   await initializeTeams();
   return teamsJs.authentication.getAuthToken();
 }
@@ -958,7 +954,7 @@ function ConfigPage() {
       applyTeamsTheme(preference === "light" || preference === "dark" ? getEffectiveTheme(theme, preference) : theme);
     };
     updateTheme("dark");
-    teamsJs.app.initialize().then(() => {
+    initializeTeams().then(context => {
       if (cancelled) return;
       teamsJs.pages.config.setValidityState(true);
       teamsJs.pages.config.registerOnSaveHandler((saveEvent) => {
@@ -975,7 +971,7 @@ function ConfigPage() {
           .catch((error) => saveEvent.notifyFailure(error instanceof Error ? error.message : String(error)));
       });
       disposeThemeSubscription = subscribeToTeamsThemeChanges(updateTheme);
-      void teamsJs.app.getContext().then(context => updateTheme(mapTeamsTheme(context.app.theme))).catch(() => undefined);
+      updateTheme(mapTeamsTheme(context.app.theme));
     }).catch(() => undefined);
     return () => { cancelled = true; disposeThemeSubscription?.(); };
   }, []);
@@ -1004,7 +1000,7 @@ function ConfigPage() {
           <span className="infoGlyph" aria-hidden="true">i</span>
           <p>Participants must sign in and connect the SignalTuner desktop app to share their connectivity health.</p>
         </aside>
-        <footer className="configFooter"><a href={PRIVACY_POLICY_PATH} target="_blank" rel="noopener noreferrer">Privacy Policy</a></footer>
+        <footer className="configFooter"><a href={PRIVACY_POLICY_PATH}>Privacy Policy</a></footer>
       </section>
     </main>
   );
@@ -1372,26 +1368,30 @@ function LoginPage({
         <p>Sign in to your SignalTuner account.</p>
       </div>
       <AuthErrorAlert message={error} />
-      {busyState === "auto-sso" && (
+      {TEAMS_SSO_ENABLED && busyState === "auto-sso" && (
         <p className="authStatus" role="status" aria-live="polite">
           <Spinner /> Signing you in with Microsoft Teams...
         </p>
       )}
-      {!isRunningInTeams && (
+      {TEAMS_SSO_ENABLED && !isRunningInTeams && (
         <p className="authNotice">Teams SSO is available when this app is opened in Microsoft Teams.</p>
       )}
       {isRunningInTeams && !meetingContext && (
         <p className="authNotice">Sign in to view your connectivity, analyses and previous Teams meetings.</p>
       )}
-      <TeamsAuthButton
-        disabled={!isRunningInTeams || isBusy}
-        isBusy={teamsBusy}
-        label="Continue with Microsoft Teams"
-        onClick={() => void onTeamsSignIn()}
-      />
-      <div className="authSeparator">
-        <span>or</span>
-      </div>
+      {TEAMS_SSO_ENABLED && (
+        <>
+          <TeamsAuthButton
+            disabled={!isRunningInTeams || isBusy}
+            isBusy={teamsBusy}
+            label="Continue with Microsoft Teams"
+            onClick={() => void onTeamsSignIn()}
+          />
+          <div className="authSeparator">
+            <span>or</span>
+          </div>
+        </>
+      )}
       <form className="authForm" aria-busy={busyState === "email-login"} onSubmit={(event) => void submitEmail(event)}>
         <div className="fieldGroup">
           <label htmlFor="login-email">Email</label>
@@ -1775,21 +1775,25 @@ function CreateAccountPage({
         <p>Start monitoring and improving your Microsoft Teams meetings.</p>
       </div>
       <AuthErrorAlert message={error} />
-      {!isRunningInTeams && (
+      {TEAMS_SSO_ENABLED && !isRunningInTeams && (
         <p className="authNotice">Teams account creation is available when this app is opened in Microsoft Teams.</p>
       )}
-      <div className="teamsCreateBlock">
-        <TeamsAuthButton
-          disabled={!isRunningInTeams || isBusy}
-          isBusy={teamsBusy}
-          label="Create with Microsoft Teams"
-          onClick={onTeamsAccountCreate}
-        />
-        <p>Use the Microsoft account already signed in to Teams.</p>
-      </div>
-      <div className="authSeparator">
-        <span>or create with email</span>
-      </div>
+      {TEAMS_SSO_ENABLED && (
+        <>
+          <div className="teamsCreateBlock">
+            <TeamsAuthButton
+              disabled={!isRunningInTeams || isBusy}
+              isBusy={teamsBusy}
+              label="Create with Microsoft Teams"
+              onClick={onTeamsAccountCreate}
+            />
+            <p>Use the Microsoft account already signed in to Teams.</p>
+          </div>
+          <div className="authSeparator">
+            <span>or create with email</span>
+          </div>
+        </>
+      )}
       <form className="authForm" aria-busy={busyState === "email-register"} onSubmit={(event) => void submitRegistration(event)}>
         <div className="splitFields">
           <div className="fieldGroup">
@@ -1867,6 +1871,7 @@ function CreateAccountPage({
           placeholder="Enter your password"
           value={confirmPassword}
         />
+        <PaymentDisclosure />
         <label className="checkboxRow" htmlFor="email-terms">
           <input
             aria-describedby={fieldErrors.terms ? "email-terms-error" : undefined}
@@ -1971,7 +1976,7 @@ function CompleteProfilePage({
         <p>Enter your name so teammates can recognize you in SignalTuner dashboards.</p>
       </div>
       <AuthErrorAlert message={error} />
-      {user.email && <p className="authNotice">Signed in with Microsoft Teams as {user.email}.</p>}
+      {user.email && <p className="authNotice">Signed in as {user.email}.</p>}
       <form className="authForm" aria-busy={busyState === "teams-sso"} onSubmit={(event) => void submitProfile(event)}>
         <div className="splitFields">
           <div className="fieldGroup">
@@ -2015,6 +2020,7 @@ function CompleteProfilePage({
         </div>
         {requireLegalConsent && (
           <>
+            <PaymentDisclosure />
             <label className="checkboxRow" htmlFor="profile-terms">
               <input
                 aria-describedby={fieldErrors.terms ? "profile-terms-error" : undefined}
@@ -2063,6 +2069,7 @@ function CreditRequiredModal({
   onClose: () => void;
   onOpenSettings: () => void;
 }) {
+  const allowCommerce = useExternalCommerce();
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -2087,7 +2094,7 @@ function CreditRequiredModal({
         <header className="incidentModalHeader">
           <div>
             <span className="eyebrow">Account notification</span>
-            <h2 id="credit-required-title">More credits required</h2>
+            <h2 id="credit-required-title">Report allowance unavailable</h2>
           </div>
           <button aria-label="Dismiss credit notification" className="modalCloseButton" onClick={onClose} type="button">
             X
@@ -2095,12 +2102,13 @@ function CreditRequiredModal({
         </header>
         <div className="incidentModalBody">
           <p className="creditRequiredMessage">
-            This analysis requires {prompt.requiredCredits} credits. You have {prompt.availableCredits} available.
+            This analysis needs an allowance of {prompt.requiredCredits} reports. You have {prompt.availableCredits} available.
           </p>
+          <p>Test Analysis remains available on supported connected desktops without using report allowance.</p>
           <div className="creditRequiredActions">
-            <button className="primaryButton" onClick={onOpenSettings} type="button">
+            {allowCommerce && <button className="primaryButton" onClick={onOpenSettings} type="button">
               Open Settings
-            </button>
+            </button>}
             <button className="secondaryButton" onClick={onClose} type="button">
               Dismiss
             </button>
@@ -2285,7 +2293,7 @@ function Dashboard({
       {error && <section className="panel panelAlert">{error}</section>}
 
       {activePage === "settings" && (
-        <SettingsPage user={user} apiBaseUrl={apiBaseUrl} token={sessionToken}
+        <SettingsPage user={user} apiBaseUrl={apiBaseUrl} token={sessionToken} onOpenSupport={() => onNavigate("support")}
           themePreference={themePreference} onThemePreferenceChange={onThemePreferenceChange}
           onUpdateProfile={onUpdateProfile} onUpdatePassword={onUpdatePassword} validatePassword={validatePassword} />
       )}
@@ -2736,6 +2744,7 @@ export default function App() {
 
   React.useEffect(() => {
     if (
+      !TEAMS_SSO_ENABLED ||
       isConfigPage ||
       isPrivacyPolicyPage ||
       isTermsOfServicePage ||
@@ -2849,6 +2858,7 @@ export default function App() {
   }, [accountUser, dashboard, isClientPromptDismissed, refreshDashboard, sessionToken]);
 
   const signInWithTeams = React.useCallback(async () => {
+    if (!TEAMS_SSO_ENABLED) return;
     if (!apiBaseUrl) {
       setError("SignalTuner is temporarily unavailable. Please try again.");
       return;
@@ -2871,6 +2881,7 @@ export default function App() {
   }, [apiBaseUrl, completeAuth, meetingContext]);
 
   const beginTeamsSsoAccountCreation = React.useCallback(() => {
+    if (!TEAMS_SSO_ENABLED) return;
     if (!isRunningInTeams) {
       setError("Teams account creation is available when this app is opened in Microsoft Teams.");
       return;
@@ -2891,6 +2902,7 @@ export default function App() {
 
   const createAccountWithTeams = React.useCallback(
     async (firstName: string, lastName: string) => {
+      if (!TEAMS_SSO_ENABLED) return;
       if (!apiBaseUrl || !pendingTeamsSsoAccountCreation) {
         setError("SignalTuner is temporarily unavailable. Please try again.");
         return;

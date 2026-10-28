@@ -1,0 +1,43 @@
+# Install in the teams.signaltuner.com web directory, beside index.html.
+# Apache 2.4 with mod_rewrite and mod_headers is required (DreamHost Apache hosting).
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+ErrorDocument 404 default
+
+# Set in both Apache header tables to remove inherited embedding conflicts.
+Header unset X-Frame-Options
+Header always unset X-Frame-Options
+Header unset Content-Security-Policy
+Header always set Content-Security-Policy "frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://*.cloud.microsoft https://*.microsoft365.com https://*.office.com https://outlook.office365.com https://outlook-sdf.office365.com; object-src 'none'; base-uri 'self'"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+# Do not apply SAMEORIGIN, COEP/COOP or a blanket Permissions-Policy to Teams tabs.
+
+# Revalidate HTML across updates/rollbacks; only content-hashed assets are immutable.
+Header unset Cache-Control
+Header always set Cache-Control "no-cache, max-age=0, must-revalidate"
+<FilesMatch "-[A-Za-z0-9_-]{8,}\.(js|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|avif)$">
+  Header always set Cache-Control "public, max-age=31536000, immutable" "expr=%{REQUEST_STATUS} == 200"
+</FilesMatch>
+
+RewriteEngine On
+# DreamHost must have HTTPS enabled. Keep ACME validation available over HTTP.
+RewriteCond %{HTTPS} !=on
+RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+RewriteRule ^ https://teams.signaltuner.com%{REQUEST_URI} [R=302,L,NE]
+
+# Never serve dotfiles, source, certificates, dependency trees or local config.
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [R=404,L]
+RewriteRule ^(?:src|node_modules|config|env|scripts|tests|infra|appPackage)(?:/|$) - [R=404,L,NC]
+RewriteRule \.(?:pem|key|pfx|p12|crt|map|ts|tsx|cs|bicep)$ - [R=404,L,NC]
+
+# Real files/directories pass through. Unknown assets/APIs never receive SPA HTML.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [END]
+RewriteRule ^(?:assets|api|\.well-known)(?:/|$) - [R=404,L,NC]
+RewriteRule (^|/)[^/]*\.[^/]+$ - [R=404,L]
+
+# Extensionless application routes (including root auth paths) retain the query.
+# Internal rewrite only: no redirect, so Teams context and returnUrl survive refresh.
+RewriteRule ^ index.html [END]

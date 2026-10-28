@@ -99,6 +99,91 @@ Requires the authenticated user to be associated with the session.
 
 ## Invite participants
 
+### Background bot and meeting scopes (2026-10-27)
+
+Manifest **1.0.17** classifies the existing bot as `isNotificationOnly: true`
+and limits both `bots[0].scopes` and `configurableTabs[0].scopes` to `groupChat`.
+`supportsChannelFeatures` is removed. The personal dashboard's `staticTabs`, all
+three meeting contexts, app/bot IDs, SSO resource, `webApplicationInfo`, RSC
+permissions and valid domains are unchanged. The earlier frontend SSO pause
+remains in place. No backend invitation code or bot identity was changed.
+
+Users initiate invitations through the React tab and Adaptive Card dialog, not
+by messaging the bot. No conversational welcome or Help command is added.
+The existing `dialog.adaptiveCard.bot.open` retains `completionBotId`; Load
+participants, selection/paging and Send invitation retain their existing
+`Action.Submit` and adapter-authenticated `task/submit` path.
+
+Compatibility review against current Microsoft documentation:
+
+- [Dialog submissions from tabs](https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/task-modules/task-modules-tabs#adaptive-card-dialogs)
+  route Adaptive Card submissions to `completionBotId` as `task/submit` invokes.
+- [TeamsJS bot dialog API](https://learn.microsoft.com/en-us/javascript/api/@microsoft/teams-js/dialog.adaptivecard.bot?view=msteams-client-js-latest)
+  exposes the same bot-backed dialog API used by SignalTuner.
+- [Store bot guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/publishing/office-store-approval)
+  calls for notification-only classification for bots without chat commands and
+  supports inline card actions. This does not require a conversational interface.
+- [Meeting scope guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/apps-in-teams-meetings/build-extensible-conversation-for-meeting-chat#bots)
+  uses `team` for channel meetings and `groupChat` for other meeting types.
+- [Manifest schema 1.27](https://developer.microsoft.com/en-us/json-schemas/teams/v1.27/MicrosoftTeams.schema.json)
+  permits this notification-only/groupChat declaration without channel support.
+
+**Assessment:** notification-only classification is consistent with the documented
+invoke-based workflow; no restriction requiring `isNotificationOnly: false` for
+this dialog was found. This is an inference from the documented contracts, not a
+Microsoft guarantee for this exact combination or evidence of live delivery.
+Schema and mocked tests cannot confirm Teams host dispatch. If a future live test
+shows invokes are blocked specifically by this flag, stop release and restore
+`false` in a new version while investigating. Do not replace the invitation flow
+with conversational commands to bypass that issue.
+
+Validation completed: `npm run validate:store`, local manifest `-ValidateOnly`,
+three `test:meeting-invitations` tests, six `test:meeting-analysis` tests, frontend
+TypeScript check, `npm run build:frontend` and Git whitespace checks passed.
+Microsoft's published 1.27 schema was downloaded and validated using the existing
+website repository's Ajv 6.12.6 with Draft-04 metadata and format checks. Both the
+local environment and a synthetic hosted environment rendered in memory passed;
+no rendered manifest or ZIP was written. A structural comparison against the
+previous manifest confirmed only the five requested fields changed. Schema SHA-256:
+`adc66f66f44b0fcd42ef36db4319edbb5225bffea95fb64a83ea2f2706b7f9a5`.
+Ajv emitted non-failing Draft-04 `$ref` sibling-keyword warnings from Microsoft's
+schema; Vite emitted its existing CommonJS API deprecation warning. No live Teams
+test or Developer Portal certification validation was performed.
+
+Remaining Store concerns include installation/RSC consent in customer tenants,
+mobile dialog behavior, clear meeting-only listing/setup instructions, and
+useful, non-repetitive chat notifications. The current backend invitation text
+mentions recipients but does not name the initiating user; review this against
+Microsoft's user-attribution requirement for user-triggered bot messages. That
+backend follow-up is intentionally not implemented in this manifest-only change.
+
+Before release, after separately authorized packaging/installation, verify:
+
+1. Add/update the app in a standard non-channel meeting, including a meeting with
+   an older app installation. Confirm the personal dashboard remains available
+   and bot personal chat/channel installation is no longer offered.
+2. Open Invite; Load participants must reach `OnTeamsTaskModuleSubmitAsync` as
+   `task/submit` with trusted meeting/conversation metadata and return the roster.
+3. Select participants, change pages and confirm selections persist. Send one
+   invitation and verify mentions, initiating-user attribution, visibility in that
+   same meeting chat and the Open SignalTuner link. Loading must send no message.
+4. Verify cancellation, permission/membership failures, missing bot installation,
+   no selections and duplicate-send protection. Check desktop/web and mobile
+   behavior, including graceful handling where the dialog API is unsupported.
+5. Verify customer-tenant installation and meeting access separately from email
+   sign-in. The known invitation/tenant issue is not fixed by this classification.
+
+The user explicitly approved removing personal bot/team installation scopes.
+This narrows supported surfaces for future installs/updates; it is not additive
+compatibility for prior channel installations. Standard non-channel meetings
+retain their declared scopes/contexts, but upgrade behavior needs live testing.
+Only a future manifest package update is required for these declaration changes;
+no backend/frontend code deployment, Azure setting or database migration is needed
+for this change itself. Existing installations keep their old declaration until
+updated. Nothing was packaged, installed, deployed or sent during this work.
+Rollback must preserve identity/security and use a higher app version restoring
+the former declaration if needed; do not alter live backend permissions.
+
 The previous `/api/TeamsMeetings/{meetingSessionId}/invite` call had no backend implementation and has been removed from the tab. There is no new REST invitation endpoint.
 
 1. **Invite** (or **Prompt** on a participant row) opens a native Teams Adaptive Card dialog.

@@ -1,5 +1,5 @@
 {
-    "name": "signaltuner-teams",
+    "name": "signaltuner-teams-app",
     "version": "0.1.0",
     "private": true,
     "main": "dist/index",
@@ -41,12 +41,19 @@
         "dev": "npm run build:frontend && nodemon",
         "build": "tsup && npm run build:frontend",
         "build:frontend": "vite build --outDir dist/client",
+        "build:dreamhost": "node scripts/build-dreamhost.mjs",
+        "validate:dreamhost": "node scripts/validate-dreamhost.mjs",
+        "toolkit:production-disabled": "node scripts/production-toolkit-guard.cjs",
+        "test:dreamhost": "node --test tests/dreamhost.test.mjs",
+        "test:dreamhost-browser": "node --test tests/dreamhost.browser.cjs",
+        "test:project-rename": "node --test tests/projectRename.test.cjs",
         "test:meeting-analysis": "node --test tests/meetingAnalysis.test.cjs",
         "test:analysis-live": "node --test tests/analysisLive.test.cjs",
         "test:service-status": "node --test tests/serviceStatus.test.cjs",
         "test:meeting-invitations": "node --test tests/meetingInvitations.test.cjs",
         "test:settings": "node --test tests/settingsAccount.test.cjs",
         "test:personal": "node --test tests/personalDashboard.test.cjs",
-        "test:personal-browser": "node --test tests/personalDashboard.browser.cjs"
+        "test:personal-browser": "node --test tests/personalDashboard.browser.cjs",
+        "test:commerce": "node --test tests/teamsCommerce.test.cjs"
     }
 }

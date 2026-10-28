@@ -106,7 +106,7 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
   return <>
     <div className="meetingAnalysisAction">
       <div className="meetingAnalysisCreditBalance" aria-live="polite" aria-atomic="true">
-        Available credits: <strong>{loadingCredits ? "Loading..." : credits === null ? "Unavailable" : credits.toLocaleString()}</strong>
+        Available report allowance: <strong>{loadingCredits ? "Loading..." : credits === null ? "Unavailable" : credits.toLocaleString()}</strong>
       </div>
       <button type="button" className="meetingAnalyzeButton" disabled={disabled || busy || (!operation && activeIds.length === 0)}
         aria-haspopup="dialog" onClick={() => { if (!operation) setTargets(activeIds); setOpen(true); }}>
@@ -119,9 +119,10 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
         <button type="button" disabled={busy} aria-label="Close meeting analysis" onClick={() => setOpen(false)}>Close</button>
       </header>
       <p>Request a five-minute analysis for {targetCount} active {targetCount === 1 ? "participant" : "participants"}, including you if your desktop is active.</p>
-      <p>Each completed report is emailed to you and its participant. Your account pays one credit per report, up to <strong>{targetCount} credits</strong>.</p>
+      <p>Each completed report is emailed to you and its participant. This uses one unit of report allowance per report, up to <strong>{targetCount} units</strong>.</p>
       <p>Existing team roles and device approval preferences apply. A participant who disconnects or has a pending analysis may be unavailable.</p>
-      <p>Available credits: {loadingCredits ? "Loading..." : credits ?? "Unavailable"}</p>
+      <p>Available report allowance: {loadingCredits ? "Loading..." : credits ?? "Unavailable"}</p>
+      {credits === 0 && <p>No report allowance is available. Test Analysis remains available from your personal dashboard on supported connected desktops.</p>}
       {targetCount > 1000 && <p role="alert">Meeting analysis supports up to 1000 active participants per run.</p>}
       {operation && <p>This run keeps its original participants. Retrying recovers accepted requests and retries only participants without a request.</p>}
       {error && <p role="alert" className="remoteAnalysisError">{error}</p>}
@@ -131,7 +132,7 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
         <ul className="meetingAnalysisResults" aria-label="Meeting analysis results">
           {results.map(result => <li key={result.targetUserId}>
             <strong>{participants.find(p => p.userId === result.targetUserId)?.displayName || "Participant"}</strong>
-            <span>{result.error || remoteAnalysisLabels[result.request!.state] || result.request!.state}</span>
+            <span>{result.statusCode === 402 ? "No report allowance is available" : result.error || remoteAnalysisLabels[result.request!.state] || result.request!.state}</span>
           </li>)}
         </ul>
       </>}

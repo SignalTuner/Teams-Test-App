@@ -1,14 +1,14 @@
 # Public Microsoft Teams Store preparation
 
 Reviewed 2026-10-27. **Not ready to submit.** Source branding is prepared; production
-configuration, customer-tenant functionality, mobile policy and live certification
+configuration, customer-tenant functionality, live mobile verification and certification
 evidence remain open. No package, upload, publication, Azure change or migration
 was performed during this preparation. Existing generated local files are stale
 and must not be submitted.
 
 ## Prepared changes
 
-- Source manifest 1.0.16: SignalTuner name without a local/dev suffix, SignalTuner
+- Source manifest 1.0.17: SignalTuner name without a local/dev suffix, SignalTuner
   Inc. publisher (from the existing legal pages), actual website, and descriptions
   covering account, desktop, credit, consent and meeting-invitation requirements.
 - Color icon: 192 x 192 PNG, opaque white background, symbol within the centered
@@ -17,34 +17,69 @@ and must not be submitted.
   by this product. Rebuild with
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-brand-icons.ps1`.
   These are production assets, not a new generated brand or third-party artwork.
-- Toolkit creation names and internal npm name no longer say Teams Test App.
+- Development project is SignalTuner Teams App; npm name is `signaltuner-teams-app`.
+  Physical directory rename is pending an open-folder Windows lock; the prepared
+  helper updates all five AGENTS maps and workspace together after the move.
+  See [rename instructions](dreamhost-hosting.md#rename-and-workspace).
   Local configuration files, ports and app IDs remain distinct. A Teams-generated
   "custom app" label belongs to the distribution channel and cannot be removed
   through the app's display name.
-- Read-only preflight and a blank `env/.env.prod.example`; no guessed app ID or
-  production resource. Deployment exclusions now include `.localConfigs`, tests,
-  docs and agent tooling so local certificate paths/configuration are not shipped.
+- Read-only preflight and `env/.env.prod.example` with the confirmed DreamHost
+  origin/resource URI and a deliberately unfilled production app ID.
+- [DreamHost static build](dreamhost-hosting.md) at `dist/dreamhost`, with Apache
+  routes, framing/security/cache headers and isolated public Azure API config.
+  No Node runtime or Azure frontend is needed. Toolkit remote provision/publish
+  is disabled; deploy only builds files. Local debugging remains intact.
+  Static build/TypeScript, six static checks, two compiled-browser checks, 50
+  frontend tests, 25 existing browser scenarios and the rename-helper test passed.
+  Live Apache/TLS/iframe/CORS verification remains a release gate.
 
 ## Submission blockers and verification gaps
 
+Update 2026-10-27: the user deferred multi-tenant SSO. `TEAMS_SSO_ENABLED = false`
+now hides SSO sign-in/account-creation controls and blocks automatic/manual Teams
+token requests. Email/password sign-in, registration and existing sessions remain.
+Only the Teams frontend needs deployment for this pause; no Azure, backend,
+permission, manifest or database change is required. Hosted SSO configuration below
+is deferred until re-enabling SSO. Cross-tenant bot access, invitations and the other
+Store gates still require resolution; hiding SSO does not establish Store readiness.
+Validation for the pause initially passed frontend build, TypeScript and 12
+personal-dashboard unit tests. The mobile-commerce follow-up now runs the browser
+coverage using isolated temporary Playwright tooling and Edge, with synthetic SDK
+and API responses; application dependencies are unchanged. No live sign-in,
+package or deployment was performed.
+
+The [mobile commerce policy](teams-mobile-commerce.md) now gates purchase, plan,
+trial, billing and indirect website routes through TeamsJS host context. Mobile
+retains server allowance and entitled functionality with neutral zero-allowance
+feedback. Desktop/web links identify leaving Teams; registration, profile consent,
+Settings and the Teams terms disclose external payment handling. Actual Teams
+mobile and external checkout verification remain necessary before certification.
+The completed follow-up passed 50 frontend tests, 25 synthetic browser scenarios,
+full build, TypeScript, manifest readiness and Microsoft's 1.27 schema for local
+and synthetic hosted input. Manifest description wording now directs signup
+inside the app instead of linking to the website; source version remains the
+undistributed 1.0.17. No generated package was changed.
+
 | Priority | Finding | Required action / owner |
 | --- | --- | --- |
-| Blocker | Only local environment is populated; `.env.dev` has no hosting or app identity. The last local ZIP points to localhost. | Confirm a production Teams app ID and tab host; populate a separate `.env.prod`. Do not submit the local ZIP. Teams app owner. |
-| Blocker | Backend `TeamsSsoTokenValidator` accepts exactly one trusted tenant. Existing Azure Bot is documented as SingleTenant; only a localhost SSO API URI is confirmed. | Design and approve customer-tenant sign-in, bot installation and consent. Test with a second independent tenant. Email/password fallback alone does not prove meeting/bot functionality works across tenants. Backend and Entra/Bot owners. Never disable issuer/audience checks or substitute a wildcard tenant. |
+| Blocker | DreamHost target and static build are prepared; production Teams app ID and live host verification remain outstanding. The last local ZIP points to localhost. | Upload/verify `dist/dreamhost` at `teams.signaltuner.com`; confirm the existing approved production app ID in a separate `.env.prod`. Do not submit the local ZIP. Teams app owner. |
+| Deferred SSO / bot blocker | SSO entry points are disabled pending multi-tenant work. Backend `TeamsSsoTokenValidator` still trusts one tenant; Azure Bot is documented as SingleTenant. | Keep SSO disabled. Verify email/password and bot/meeting workflows with a second independent tenant before submission. Design and approve multi-tenant SSO before re-enabling it. Never disable issuer/audience checks or substitute a wildcard tenant. Backend and Entra/Bot owners. |
 | Blocker | Bot invitation access remains unresolved in the latest SSO record. | Demonstrate Load participants, selected mentions, meeting deep link and authorization failures in a real supported meeting before advertising the flow as working. Backend plus Teams app. |
-| Blocker | `SettingsPage.tsx` always exposes Buy credits, View plans and a billing link; it has no Teams host-client gating. | Review and correct iOS/Android commerce/upsell flows using Teams client context, including linked account/legal flows. Keep report balances and consumption separate from purchases. Desktop purchase links must disclose leaving Teams. Teams frontend owner. |
-| Blocker | Manifest declares a conversational bot in personal/groupChat/team scopes, but `SignalTunerTeamsBot` has no message/help/welcome handler. | Implement suitable onboarding/help/fallback for the advertised scopes, or approve a narrower accurate capability declaration after consumer review. Do not silently remove released scopes. Backend and manifest owners. |
-| Verify | `supportsChannelFeatures: tier1`, team scope and meeting contexts are declared, while invitations explicitly reject channel meetings. | Test every declared install surface. Explain supported limits in first-run UI and listing; resolve mismatches before submission. Current 1.27 schema meets the documented 1.25 minimum for channel-enabled submissions; still validate against Microsoft's current schema. |
-| Verify | Production host `teams.signaltuner.com` appears in CORS/manifest, but a public fetch of `/tabs/home` was inaccessible during review. | Verify DNS, certificate, hosting resource, route refreshes and iframe headers; inability to fetch is not proof the service is down. Check `/tabs/config`, `/tabs/privacy`, `/tabs/terms`, `/tabs/support` without relying on localhost. |
+| Verify | TeamsJS host gating now hides commerce and indirect purchase routes on iOS/Android/iPadOS, with desktop/web external-navigation and payment disclosures. | Verify actual mobile Settings, signup, legal/support, zero-allowance Test Analysis, entitled reports, setup and incident routes. Unknown/failed context must remain restricted. See the [host policy and test coverage](teams-mobile-commerce.md). Teams frontend owner. |
+| Verify | Manifest 1.0.17 now declares a background notification-only bot in `groupChat`; no personal bot or channel scope. | No conversational commands/welcome/Help are planned. Validate the existing tab-launched Adaptive Card `task/submit` flow, participant selection and chat delivery in Teams. See the [compatibility assessment](meeting-participant-roster.md#background-bot-and-meeting-scopes-2026-10-27); schema validation is not runtime certification. |
+| Certification follow-up | Backend invitation text mentions recipients but does not identify the initiating user. | Review user attribution required for user-triggered bot messages; do not conflate notification-only classification with exemption from notification-content rules. Backend implementation remains unchanged by request. |
+| Verify | Configurable tabs now use `groupChat` only; `supportsChannelFeatures` removed; personal static tab and meeting contexts retained. | Test standard meeting installation and upgrades from older manifests, personal dashboard access and absence of channel installation. Explain the narrowed supported surfaces to reviewers and existing users. |
+| Verify | User confirms DreamHost subdomain exists; static build/routes are locally validated. No upload or live hosting verification performed. Backend source CORS includes the origin. | Verify DreamHost web directory, DNS, certificate, Apache `.htaccess`, real asset 404s, route refreshes, framing headers and live backend CORS. Check config/privacy/terms/support and root auth routes. |
 | Verify | Desktop setup offers a macOS DMG although the supplied project map documents the Windows client. | Verify the downloadable Mac client and supported features; otherwise correct the download flow/support wording before release. Test mobile/no-client users can continue without syncing. If a maintained Mac project exists, add it to the shared project map separately. |
 | Verify | External navigation/download actions exist throughout Settings and client setup. | Clearly mark leaving Teams; warn before executable downloads; test keyboard, focus, high contrast, dark mode and narrow meeting/mobile layouts. |
 | Verify | Publisher identity, support SLA/contact, policy publication and current deployment evidence are not independently verified. | Confirm the exact Partner Center verified publisher, reachable public support/privacy/terms pages, current data handling disclosures, reviewer accounts and feature deployments. |
 
-This review does not change authentication, permissions, scopes, API routes or
-billing rules. Those need a coordinated implementation/release after the specific
+This review preserves backend authentication, permissions, API routes and
+billing rules. Changes to those need a coordinated implementation/release after the specific
 public-tenant design is approved. Cosmetic readiness cannot resolve these blockers.
 
-## Production configuration and Azure locations
+## Production configuration, DreamHost and Azure locations
 
 All values in `.env.prod` are non-secret, Teams-project configuration. This is a
 separate environment, not a replacement for `.env.local`.
@@ -53,27 +88,27 @@ separate environment, not a replacement for `.env.local`.
 | --- | --- | --- |
 | `TEAMSFX_ENV` | `prod`; toolkit environment and preflight | No production fallback |
 | `TEAMS_APP_ID` | Confirmed production app ID from Teams Developer Portal; consumed by the manifest/toolkit | Blank; do not substitute bot ID or assume local ID |
-| `TAB_DOMAIN` | Confirmed production tab DNS hostname; manifest valid domains | Blank |
-| `TAB_ENDPOINT` | Matching HTTPS origin, no trailing slash; manifest routes | Blank |
-| `TEAMS_SSO_RESOURCE` | Entra exposed API URI matching that origin and bot identity | Blank |
-| `AZURE_APP_SERVICE_RESOURCE_ID` | Full Azure resource ID of the production Teams tab host; deployment workflow | Blank; required before deployment, not manifest validation |
+| `TAB_DOMAIN` | Production tab DNS hostname; manifest valid domains | `teams.signaltuner.com` |
+| `TAB_ENDPOINT` | HTTPS origin, no trailing slash; manifest routes | `https://teams.signaltuner.com` |
+| `TEAMS_SSO_RESOURCE` | Entra exposed API URI matching that origin and bot identity | `api://teams.signaltuner.com/botid-e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999`; not yet live-verified |
 
-1. **Teams tab hosting:** Azure portal > App Services > the app serving the
-   confirmed tab hostname > Settings > Custom domains and Certificates. The
-   resource name/slot is not established by repository evidence. Identify it by
-   its custom-domain binding; do not select `signaltuner-back` or its staging slot
-   as the tab frontend. Verify hostname and TLS; obtain the resource ID from
-   Overview > JSON View. The existing Bicep can create a paid B1 service and outputs
-   the default Azure hostname; do not run Provision as a harmless packaging step.
-   Production resource creation/domain changes need separate approval. Build and
-   deploy to the confirmed slot, then test route and iframe loading before packaging.
+The static build uses the separate public
+`config/dreamhost/.env.dreamhost` API URL. No Azure frontend resource ID is needed.
+
+1. **Teams tab hosting:** DreamHost > Websites > Manage Websites >
+   `teams.signaltuner.com` > Manage. Confirm the assigned website user/web directory
+   and HTTPS certificate, then upload only `dist/dreamhost` contents by SFTP when
+   authorized. See [the full hosting and rollback guide](dreamhost-hosting.md).
+   Test real Apache headers, route/asset behavior and Teams iframe loading before
+   packaging. Legacy Bicep is not part of the production workflow.
 2. **Entra SSO:** Azure portal > Microsoft Entra ID > App registrations > All
    applications > `signaltuner-teams-bot`
    (`e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999`) > Expose an API. Once the host and
    identity design are approved, add the hosted URI
-   `api://<confirmed-tab-host>/botid-e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999`, if that
-   identity is retained, and set the identical `TEAMS_SSO_RESOURCE`. Retain local
-   development compatibility. Verify `access_as_user` and existing Teams client
+   `api://teams.signaltuner.com/botid-e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999`
+   and set the identical `TEAMS_SSO_RESOURCE`. Do not overwrite local configuration
+   or assume multi-domain Teams SSO support; resolve the separate environment and
+   tenant rollout before re-enabling SSO. Verify `access_as_user` and Teams client
    preauthorizations. Save and allow propagation, obtain new tokens through normal
    sign-in and verify audience/issuer; never collect or commit tokens. Supported
    account types and bot tenant architecture require a separately approved design;
@@ -105,6 +140,8 @@ npm run validate:store
 powershell -NoProfile -ExecutionPolicy Bypass -File .vscode/scripts/generate-local-manifest.ps1 -ValidateOnly
 npm run build
 npx --no-install tsc -p tsconfig.app.json --noEmit
+npm run build:dreamhost
+npm run test:dreamhost
 # Once .env.prod contains confirmed values:
 npm run validate:store -- -RequireProduction -EnvironmentFile env/.env.prod
 ```
@@ -114,7 +151,8 @@ production inputs, origin/resource alignment, unresolved placeholders and
 development hosts. It renders only in memory. It does not validate Microsoft's
 full JSON schema, ownership, live endpoints, existing app/version uniqueness,
 tenant consent or certification policy. Source-only success is not release approval.
-The empty production example deliberately fails production validation.
+The production example deliberately fails validation until the existing approved
+production Teams app ID is supplied.
 
 Validation completed during this review: source preflight, local manifest
 `-ValidateOnly`, full `npm run build`, frontend TypeScript check and Git whitespace
@@ -122,21 +160,25 @@ check passed. Preflight exercised six cases: source-only success; missing, blank
 and local production-input rejection; synthetic valid inputs; and mismatched SSO
 resource rejection. Both icons were visually inspected, including the white icon
 against a dark background. Build emitted the existing Vite CommonJS API deprecation
-warning. No Microsoft schema/package validator or live Teams/browser test was run;
-the production environment remains incomplete. Existing local ZIP/manifest files
-were not regenerated.
+warning. The later 1.0.17 scope change additionally passed Microsoft's published
+1.27 JSON schema using Ajv/Draft-04 for local and synthetic hosted inputs in memory,
+three invitation tests, six meeting-analysis tests, TypeScript and frontend build.
+See the roster document for the schema hash and compatibility limits. Developer
+Portal package/Store validation and live Teams tests were not run; production
+configuration remains incomplete. Existing local ZIP/manifest files were not regenerated.
 
 After explicit authorization to package, generate the production manifest and
 ZIP containing `manifest.json`, `color.png` and `outline.png` at its root. Do not
 zip the repository or the entire `appPackage` directory. Retain the correct app
-identity and increment the manifest version if 1.0.16 has already been distributed.
+identity and increment the manifest version if 1.0.17 has already been distributed.
 Run Microsoft schema/package validation and Developer Portal Store validation
 against that exact ZIP. Resolve all errors and assess every warning.
 
-`m365agents.yml` **publish** calls `teamsApp/publishAppPackage`, which submits to
-the organization's Teams Admin Center. It is not a public Store submission.
-Provision also deploys infrastructure and updates Developer Portal. Neither is
-a read-only validation command.
+`m365agents.yml` now disables remote provision/publish and only prepares static
+files in its deploy lifecycle. Packaging, Developer Portal updates and public
+Store submission must be separately authorized. The local Toolkit workflow is
+retained for debugging and still has package/install actions; it is not a
+production packaging or read-only validation command.
 
 ## Store listing and reviewer material
 
@@ -162,10 +204,13 @@ a read-only validation command.
 ## Cross-project follow-up required
 
 - Project: `signaltuner-back`, with the Teams app and external Entra/Bot resources.
-- Contract or behavior affected: public-tenant SSO, bot onboarding/invitations and
+- Contract or behavior affected: deferred public-tenant SSO, bot installation/invitations and
   production app deep links.
 - Required code/configuration changes: approve and implement customer-tenant
-  identity/consent handling; resolve invitation access and conversational bot gaps.
+  bot identity/consent handling and invitation access; multi-tenant SSO is deferred.
+  No conversational bot functionality is required by the chosen design.
+  Review initiating-user attribution in `TeamsMeetingInvitations.Invitation` before
+  certification; the user requested preserving this implementation in this task.
 - Suggested search terms or likely files: `Services/TeamsSsoTokenValidator.cs`,
   `Controllers/BotMessagesController.cs`, `Services/TeamsMeetingInvitations.cs`,
   `docs/teams-sso.md`, `TeamsSso__TenantId`, `MicrosoftAppType`,
@@ -178,13 +223,17 @@ a read-only validation command.
 
 ## Deployment impact
 
-- Changed projects: Teams app only; existing uncommitted dashboard work preserved.
+- Changed projects: Teams app. Five AGENTS path maps/workspace remain on the
+  current directory until the prepared rename helper can run after the folder
+  lock is cleared. Existing application work preserved; sibling code unchanged.
 - Dependent projects: backend and installed desktop client for advertised workflows;
   website for external account flows. No sibling code changed in this preparation.
 - Database/configuration prerequisites: no migration or schema change; confirmed
   production environment and resolved public-tenant design still required.
-- Backward compatibility: branding changes are additive; app/bot IDs, scopes, routes
-  and authentication behavior unchanged. Only source manifest version advanced.
+- Backward compatibility: app/bot IDs, routes and backend authentication unchanged.
+  The approved 1.0.17 manifest narrows bot/configurable-tab scopes to `groupChat`
+  and sets notification-only mode. Personal dashboard remains; old channel/personal
+  bot installations need upgrade review. The frontend SSO pause is separate.
 - Required deployment order: resolve blockers, backend/configuration if changed,
   hosted frontend, production package and installation checks, Store submission.
 - Post-deployment verification: cross-tenant sign-in, all install scopes, bot
@@ -192,7 +241,7 @@ a read-only validation command.
 - Rollback considerations: retain existing identities and security checks. Restore
   earlier branding through a new higher manifest version if an update is required;
   frontend and backend compatibility must be assessed separately.
-- Projects still requiring deployment: hosted Teams frontend and package; backend
+- Projects still requiring deployment: DreamHost static frontend and later Teams package; backend
   will require deployment for the unresolved bot/public-tenant work. This task did
   not deploy any component. Functionality may be inconsistent until required
   components and configuration are released together in the stated order.

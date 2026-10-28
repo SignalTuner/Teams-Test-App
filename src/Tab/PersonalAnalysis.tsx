@@ -69,7 +69,8 @@ export default function PersonalAnalysis({ api, userId, credits, onCreditsChange
         const status = (reason as { status?: number }).status;
         const rejected = status && status < 500 && status !== 408;
         if (rejected) { sessionStorage.removeItem(pendingAnalysisKey(userId)); setPending(null); setReady(false); }
-        setError(rejected ? "The request was declined. Refresh status and check desktop availability and credits."
+        setError(status === 402 ? "No report allowance is available. Test Analysis remains available on supported connected desktops."
+          : rejected ? "The request was declined. Refresh status and check desktop availability and report allowance."
           : "The request could not be confirmed. Retry the same analysis to avoid a duplicate request.");
       }
     } finally {
@@ -93,12 +94,12 @@ export default function PersonalAnalysis({ api, userId, credits, onCreditsChange
     <div className="participantRow">
       {children}
       <div className="participantActions personalAnalysisActions" role="group" aria-label="Your analysis actions">
-        <button className="secondaryButton" type="button" title="Free five-minute analysis. No credits, PDF or email."
+        <button className="secondaryButton" type="button" title="Five-minute analysis without using report allowance. No PDF or email."
           disabled={blocked || !desktop.data?.supportsTestAnalysis} onClick={() => void submit("Test")}>Test Analysis</button>
         <span className="remoteAnalysisAction"><button className="meetingAnalyzeButton" type="button" title="One report credit. Your PDF is emailed when ready."
           disabled={blocked || credits === null || credits < 1} onClick={() => void submit("Report")}>Analysis + Report</button></span>
-        <p className="personalAnalysisCredits">Available credits: <strong>{credits === null ? "Unavailable" : credits}</strong></p>
-        {credits === 0 && <p className="personalAnalysisHint">Test Analysis is free. A report requires one credit.</p>}
+        <p className="personalAnalysisCredits">Available report allowance: <strong>{credits === null ? "Unavailable" : credits}</strong></p>
+        {credits === 0 && <p className="personalAnalysisHint">No report allowance is available. Test Analysis remains available on supported connected desktops.</p>}
         {desktop.loading ? <p role="status">Checking your desktop…</p> : !desktop.data?.connected ? <p className="personalAnalysisHint">Connect your desktop client to start an analysis.</p>
           : !desktop.data.supportsTestAnalysis && <p className="personalAnalysisHint">Update your desktop client to enable Test Analysis.</p>}
         {desktop.error && <p role="alert">{desktop.error} <button className="textButton" onClick={desktop.refresh}>Retry availability</button></p>}

@@ -1,22 +1,9 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const ts = require("typescript");
-const Module = require("node:module");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 
-const filename = path.resolve(__dirname, "../src/Tab/MeetingServiceStatus.tsx");
-const loaded = new Module(filename, module);
-loaded.filename = filename;
-loaded.paths = module.paths;
-const originalRequire = loaded.require.bind(loaded);
-loaded.require = name => name.endsWith(".css") ? {} : name.endsWith(".png") ? { default: "teams-logo.png" } : originalRequire(name);
-loaded._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
-}).outputText, filename);
-const { MeetingServiceStatusView: View, incidentPreview, incidentReportLink, loadTeamsServiceStatus } = loaded.exports;
+const { MeetingServiceStatusView: View, incidentPreview, incidentReportLink, loadTeamsServiceStatus } = require("./loadTabModule.cjs")("MeetingServiceStatus.tsx");
 const incident = (id, status) => ({ IncidentId: id, Title: `Synthetic incident ${id}`, Status: status,
   PublishDate: `2026-01-${String(id).padStart(2, "0")}T12:00:00Z`, Description: "Synthetic description." });
 const details = (status, incidents = []) => ({ DisplayName: "Microsoft Teams", CurrentStatus: status, incidents });
@@ -24,12 +11,12 @@ const render = props => renderToStaticMarkup(React.createElement(View, props));
 
 test("operational empty row shows zero real incidents and a collapsed website-style disclosure", () => {
   const markup = render({ details: details("Operational") });
-  for (const text of ["Microsoft Teams", "Operational", "0 active incidents", "View incidents", "No incidents to display.", "See full report history"])
+  for (const text of ["Microsoft Teams", "Operational", "0 active incidents", "View incidents", "No incidents to display."])
     assert.ok(markup.includes(text), text);
   assert.ok(markup.includes('data-service-status="healthy"'));
   assert.ok(markup.includes('aria-expanded="false"'));
   assert.ok(markup.includes('hidden=""'));
-  assert.ok(markup.includes('href="https://www.signaltuner.com/teamsstatus"'));
+  assert.ok(!markup.includes('href="https://'), "unknown host hides indirect commerce routes");
   assert.ok(!markup.includes("Synthetic incident"));
 });
 

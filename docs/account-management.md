@@ -3,6 +3,13 @@
 The Teams app account page uses the SignalTuner backend as the source of truth
 for account identity and profile updates.
 
+As of 2026-10-27, Teams mobile Settings shows the backend's available report
+allowance without plan/trial/commerce controls. Website account-deletion navigation
+is replaced by in-app Support on mobile because the website exposes purchase
+navigation. Desktop/web links identify leaving Teams. See
+[host-specific commerce presentation](teams-mobile-commerce.md) for the policy,
+consent disclosure, validation and frontend-only release impact.
+
 ## Profile name
 
 - `PUT /api/User/profile`

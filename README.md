@@ -1,7 +1,29 @@
-# SignalTuner for Microsoft Teams
+# SignalTuner Teams App
+
+Production frontend: static Apache hosting at `https://teams.signaltuner.com`
+on DreamHost. Run `npm run build:dreamhost` and upload only `dist/dreamhost/`
+contents when ready. See [build, SFTP, headers, manifest and rollback instructions](docs/dreamhost-hosting.md).
+The backend/bot remain on Azure. `npm run build`, local Node HTTPS and F5 debugging
+remain available; production Toolkit provision/publish is disabled and deploy is
+build-only. Public Teams branding stays **SignalTuner**.
+The physical folder rename is pending a Windows open-folder lock. Follow the
+[rename completion steps](docs/dreamhost-hosting.md#rename-and-workspace) to update
+the directory, all five project maps and the shared workspace together.
 
 Public Store preparation: [submission review and release checklist](docs/store-submission.md).
-Source manifest **1.0.16** uses SignalTuner branding without development suffixes.
+The [mobile commerce policy](docs/teams-mobile-commerce.md) hides direct and indirect
+purchase routes using TeamsJS host context, retains report allowance and entitled
+analysis, and discloses desktop/web external navigation and payment flow.
+Teams SSO is temporarily paused: sign-in and account creation use email/password,
+and no automatic Teams token request runs. Existing sessions still restore. The
+frontend-only `TEAMS_SSO_ENABLED` switch retains the implementation for later;
+deploy the Teams frontend to apply this change. No backend, Azure or manifest
+change is needed to pause these controls.
+Source manifest **1.0.17** uses SignalTuner branding without development suffixes.
+Its background notification-only bot and configurable meeting tab use `groupChat`
+only. The personal dashboard remains available through its unchanged static tab;
+channel installation and personal bot chat are no longer declared. See
+[bot classification and live verification](docs/meeting-participant-roster.md#background-bot-and-meeting-scopes-2026-10-27).
 Run `npm run validate:store` for read-only source checks. This does not create a
 package or establish production readiness. The public Store blockers and production
 preflight command are documented in the checklist.
@@ -68,7 +90,9 @@ remove that platform label. Public Store distribution is a separate release step
 | `.vscode`    | VSCode files for debugging                   |
 | `appPackage` | Templates for the application manifest |
 | `env`        | Environment files                            |
-| `infra`      | Templates for provisioning Azure resources   |
+| `infra`      | Inactive legacy Azure frontend templates; not used by DreamHost |
+| `hosting/dreamhost` | Production Apache routing and response headers |
+| `config/dreamhost` | Isolated public production API configuration |
 | `src`        | The source code for the application    |
 
 The main implementation files are:
@@ -78,7 +102,7 @@ The main implementation files are:
 | `index.html`                     | HTML file.                                                                                                      |
 | `src/Tab/App.css`                | CSS file for the app.                                                                                           |
 | `src/Tab/App.tsx`                | Tab source file. It calls `teamsjs` SDK to get the context of on which Microsoft 365 application your app is running.      |
-| `src/index.ts`                   | Starting the app using [Microsoft Teams SDK](https://aka.ms/teams-ai-library-v2).                                                                     |
+| `src/index.ts`                   | Local/debug Node HTTPS server; not required by DreamHost. |
 | `vite.config.js`                 | Configuration for Vite build tool.                                                                              |  
 | `nodemon.json`                   | Configuration for Nodemon to watch and restart the server.                                                      |
 
@@ -98,7 +122,7 @@ The following documentation describes the underlying Teams tooling.
 - [Access data in Microsoft Graph](https://learn.microsoft.com/microsoftteams/platform/toolkit/teamsfx-sdk#microsoft-graph-scenarios)
 - [Use an existing Microsoft Entra application](https://learn.microsoft.com/microsoftteams/platform/toolkit/use-existing-aad-app)
 - [Customize the app manifest](https://learn.microsoft.com/microsoftteams/platform/toolkit/teamsfx-preview-and-customize-app-manifest)
-- Host your app in Azure by [provision cloud resources](https://learn.microsoft.com/microsoftteams/platform/toolkit/provision) and [deploy the code to cloud](https://learn.microsoft.com/microsoftteams/platform/toolkit/deploy)
+- [Host this frontend statically on DreamHost](docs/dreamhost-hosting.md); do not provision an Azure frontend.
 - [Collaborate on app development](https://learn.microsoft.com/microsoftteams/platform/toolkit/teamsfx-collaboration)
 - [Set up the CI/CD pipeline](https://learn.microsoft.com/microsoftteams/platform/toolkit/use-cicd-template)
 - [Publish the app to your organization or the Microsoft app store](https://learn.microsoft.com/microsoftteams/platform/toolkit/publish)

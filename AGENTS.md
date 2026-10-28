@@ -15,7 +15,7 @@ The current project map is:
 | SignalTuner backend | `C:\Users\georg\source\repos\signaltuner-back` | APIs, authentication enforcement, database access, server-side business rules, background services, and SignalR | .NET 6 Web API with MySQL; this repository owns API and database implementation |
 | SignalTuner website frontend | `C:\Users\georg\source\repos\signaltuner-front` | Public website and browser dashboard | React SPA; this repository owns browser-specific presentation and interaction |
 | SignalTuner service-status SEO frontend | `C:\Users\georg\source\repos\is-service-down` | SEO-friendly public service-status/front-door experience that should share style, messaging patterns, and browser functionality with the website where applicable | React SPA / Create React App; this repository owns SEO-oriented public status pages and domain-specific frontend behavior |
-| SignalTuner Microsoft Teams app | `C:\Users\georg\source\repos\Teams Test App` | Teams tab/meeting experience, Teams context, Teams SSO initiation, manifests, and Teams-specific UI | Microsoft 365/Teams Agents Toolkit project; inspect `package.json` and manifests for the exact runtime |
+| SignalTuner Microsoft Teams app | `C:\Users\georg\source\repos\SignalTuner Teams App` | Teams tab/meeting experience, Teams context, Teams SSO initiation, manifests, and Teams-specific UI | React/Vite static frontend on DreamHost Apache; Microsoft 365/Teams Agents Toolkit and Node.js for local debugging |
 
 The project map may expand. When another SignalTuner client, service, website, integration, deployment project, or shared package is discovered, evaluate whether it belongs in this map and tell the user when the shared documentation should be updated.
 
@@ -552,7 +552,7 @@ Do not claim the ecosystem is complete or deployable if required projects remain
 
 ## Current repository: SignalTuner Microsoft Teams app
 
-**Path:** `C:\Users\georg\source\repos\Teams Test App`
+**Path:** `C:\Users\georg\source\repos\SignalTuner Teams App`
 
 This repository owns the Microsoft Teams-specific experience: Teams tab/meeting UI, Teams context, local and production manifests, Teams SSO initiation, valid domains/content URLs, and integration with the SignalTuner backend.
 
