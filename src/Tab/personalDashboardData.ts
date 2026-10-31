@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TelemetryRecord } from "./dashboardTypes";
+import { analysisRateLimitMessage } from "./analysisErrors";
 
 export type PersonalApi = <T>(path: string, options?: RequestInit) => Promise<T>;
 export function createPersonalApi(base: string, token: string, expired: () => void): PersonalApi {
@@ -9,6 +10,10 @@ export function createPersonalApi(base: string, token: string, expired: () => vo
     });
     if (options.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
     if (response.status === 401) expired();
+    if (response.status === 429 && path === "remote-analysis") {
+      const data = await response.json().catch(() => null);
+      throw Object.assign(new Error(analysisRateLimitMessage(data?.message)), { status: 429 });
+    }
     if (!response.ok) throw Object.assign(new Error(response.status === 401 ? "Your session has expired. Sign in again."
       : response.status === 404 ? "No data is available."
       : response.status === 403 ? "You no longer have access to this information."
@@ -43,7 +48,8 @@ export function usePersonalResource<T>(api: PersonalApi, path: string | null, in
     void read();
     const timer = setInterval(() => void read(), interval);
     document.addEventListener("visibilitychange", read);
-    return () => { stopped = true; controller?.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", read); };
+    window.addEventListener("focus", read);
+    return () => { stopped = true; controller?.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", read); window.removeEventListener("focus", read); };
   }, [api, path, interval]);
   return { data, error, loading, refresh };
 }

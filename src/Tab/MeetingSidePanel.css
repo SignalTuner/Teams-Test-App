@@ -1,0 +1,21 @@
+/* Teams host context selects this layout, independently of viewport width. */
+.meetingSidePanel { gap: 12px; }
+.meetingSidePanel .meetingHealthPanel { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.meetingSidePanel .meetingOverviewTitle { align-self: stretch; padding-bottom: 0; }
+.meetingSidePanel .meetingScoreDisplay { padding: 0; border: 0; }
+.meetingSidePanel .healthActions { padding: 0; border: 0; width: 100%; }
+.meetingSidePanel .meetingAnalysisAction { flex-direction: column-reverse; width: 100%; }
+.meetingSidePanel .participantsToolbar { padding: 12px 16px; }
+.meetingSidePanel .sidePanelParticipant { padding: 12px 16px; }
+.sidePanelParticipantIdentity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.meetingSidePanel .sidePanelParticipant .participantName { font-size: 15px; margin: 0; }
+.meetingSidePanel .sidePanelParticipant .participantEmail { margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.sidePanelParticipantActions { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; }
+.sidePanelParticipantActions > .remoteAnalysisAction { margin: 0; max-width: 100%; }
+.sidePanelParticipantActions > .remoteAnalysisAction > button { width: var(--meeting-analysis-button-width); }
+.sidePanelSignalScore { display: grid; justify-items: center; gap: 2px; font-size: 12px; color: var(--muted); }
+.meetingSidePanel .meetingScoreDisplay .compactSignalScoreDisplay,
+.sidePanelSignalScore .compactSignalScoreDisplay { width: 115.2px; border-radius: 6.4px; }
+.sidePanelOpenTab { display: grid; gap: 8px; }
+.sidePanelOpenTab > button { width: 100%; }
+.sidePanelOpenTab p { margin: 0; color: var(--ink); font-size: 13px; }

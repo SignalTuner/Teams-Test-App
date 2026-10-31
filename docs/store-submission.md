@@ -1,14 +1,70 @@
 # Public Microsoft Teams Store preparation
 
-Reviewed 2026-10-27. **Not ready to submit.** Source branding is prepared; production
-configuration, customer-tenant functionality, live mobile verification and certification
-evidence remain open. No package, upload, publication, Azure change or migration
-was performed during this preparation. Existing generated local files are stale
+Production package updated 2026-10-28. **ZIP prepared and schema-validated;
+Store certification readiness remains unverified.** Customer-tenant functionality,
+live mobile verification and certification evidence remain open. A new production
+ZIP was generated at the user's request; no upload, publication, installation,
+Azure change or migration was performed. Existing generated local files are stale
 and must not be submitted.
+
+## Production package 1.0.18 (2026-10-28)
+
+- User-confirmed production `TEAMS_APP_ID` in `env/.env.prod`:
+  `12a01999-ead3-4e8a-9fca-0263cc470316`. Local environment IDs are unchanged.
+- Source manifest version advanced from 1.0.17 to 1.0.18. Bot and
+  `webApplicationInfo.id` remain `e32ebb3f-81e9-4ca2-85f1-a0a2d7b74999`;
+  groupChat-only notification bot, meeting contexts, personal dashboard, RSC
+  permissions, hosted SSO resource and domains are preserved. SSO stays disabled.
+- Fresh ZIP: `appPackage/build/SignalTuner-production-1.0.18.zip`.
+  Resolved manifest and icons: `appPackage/build/production-1.0.18/`.
+  Exactly `manifest.json`, `color.png`, and `outline.png` are at the ZIP root.
+  No development URLs, unresolved variables, source files or credentials are included.
+  The prior local and production-test archives were not reused or overwritten.
+- ZIP SHA-256: `2B8B782BD85E3DA56EEF494478E4B8252498E146EC6975894F84355CB38EF11B`.
+- Production preflight and icon pixel/dimension checks passed. The resolved
+  manifest passed Microsoft's published 1.27 schema using Ajv 6 / Draft-04;
+  schema SHA-256: `ADC66F66F44B0FCD42EF36DB4319EDBB5225BFFEA95FB64A83EA2F2706B7F9A5`.
+  The packed manifest matches the validated file. Ajv reported informational
+  warnings for sibling keywords beside `$ref` in Microsoft's schema.
+- Live read-only HTTPS checks returned 200 for `/tabs/home`, `/tabs/config`,
+  `/tabs/privacy`, and `/tabs/terms` on `teams.signaltuner.com`, with a CSP allowing
+  Teams framing and no X-Frame-Options blocker. These checks do not establish
+  in-client rendering, installed app identity, or backend workflow success.
+
+This is a distinct Teams app identity from the earlier local/test app, not an
+in-place upgrade of that app. Validate/install the new identity in the intended
+test tenant and meeting; existing tabs under the old identity do not automatically
+become this app. Do not change the bot/Entra registration ID to the Teams app ID.
+
+### Required backend configuration alignment
+
+After the new app is available in the intended tenant, update the existing
+non-secret **`TeamsInvitations__TeamsAppId`** setting to
+**`12a01999-ead3-4e8a-9fca-0263cc470316`** at **Azure portal > App Services >
+signaltuner-back (resource group SignalTuner, production, not signaltuner-back-stage)
+> Settings > Environment variables > App settings**. Apply the change and allow
+the App Service restart. Verify Load Participants, selection, Send Invitation,
+meeting-chat delivery, and the message's Open SignalTuner button in a real meeting.
+This is an existing configuration change, not a backend code release or SQL migration.
+The old identity's invitation links and the new package will be inconsistent until
+the setting is aligned. Reverting that setting restores links to the old identity;
+retain the existing bot identity and authorization checks during rollback.
+
+No Azure setting was changed in this task. The latest recorded backend inspection
+still named the local app ID; current live settings were not independently inspected.
+The backend invitation document records this required production value as well.
+
+Before submitting, run Developer Portal validation against this exact ZIP and
+complete the open cross-tenant, mobile, bot-dialog/delivery and reviewer-evidence
+checks below. Local schema validation is not Microsoft Store approval. See
+[Microsoft's package requirements](https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/apps-package)
+and [Store validation guidelines](https://learn.microsoft.com/en-us/microsoftteams/platform/publishing/office-store-approval).
+Only Teams package/configuration and backend documentation changed for this
+release; no frontend hosting, backend, WPF, website, or SEO deployment was performed.
 
 ## Prepared changes
 
-- Source manifest 1.0.17: SignalTuner name without a local/dev suffix, SignalTuner
+- Source manifest 1.0.18: SignalTuner name without a local/dev suffix, SignalTuner
   Inc. publisher (from the existing legal pages), actual website, and descriptions
   covering account, desktop, credit, consent and meeting-invitation requirements.
 - Color icon: 192 x 192 PNG, opaque white background, symbol within the centered
@@ -63,11 +119,11 @@ undistributed 1.0.17. No generated package was changed.
 
 | Priority | Finding | Required action / owner |
 | --- | --- | --- |
-| Blocker | DreamHost target and static build are prepared; production Teams app ID and live host verification remain outstanding. The last local ZIP points to localhost. | Upload/verify `dist/dreamhost` at `teams.signaltuner.com`; confirm the existing approved production app ID in a separate `.env.prod`. Do not submit the local ZIP. Teams app owner. |
+| Verify | Production ID is confirmed and the new 1.0.18 ZIP is schema-valid. Basic live route/header checks passed; in-client hosting verification remains outstanding. The old local ZIP points to localhost. | Use only `SignalTuner-production-1.0.18.zip`; validate the installed production identity and hosted frontend in Teams. Teams app owner. |
 | Deferred SSO / bot blocker | SSO entry points are disabled pending multi-tenant work. Backend `TeamsSsoTokenValidator` still trusts one tenant; Azure Bot is documented as SingleTenant. | Keep SSO disabled. Verify email/password and bot/meeting workflows with a second independent tenant before submission. Design and approve multi-tenant SSO before re-enabling it. Never disable issuer/audience checks or substitute a wildcard tenant. Backend and Entra/Bot owners. |
 | Blocker | Bot invitation access remains unresolved in the latest SSO record. | Demonstrate Load participants, selected mentions, meeting deep link and authorization failures in a real supported meeting before advertising the flow as working. Backend plus Teams app. |
 | Verify | TeamsJS host gating now hides commerce and indirect purchase routes on iOS/Android/iPadOS, with desktop/web external-navigation and payment disclosures. | Verify actual mobile Settings, signup, legal/support, zero-allowance Test Analysis, entitled reports, setup and incident routes. Unknown/failed context must remain restricted. See the [host policy and test coverage](teams-mobile-commerce.md). Teams frontend owner. |
-| Verify | Manifest 1.0.17 now declares a background notification-only bot in `groupChat`; no personal bot or channel scope. | No conversational commands/welcome/Help are planned. Validate the existing tab-launched Adaptive Card `task/submit` flow, participant selection and chat delivery in Teams. See the [compatibility assessment](meeting-participant-roster.md#background-bot-and-meeting-scopes-2026-10-27); schema validation is not runtime certification. |
+| Verify | Manifest 1.0.18 retains the background notification-only bot in `groupChat`; no personal bot or channel scope. | No conversational commands/welcome/Help are planned. Validate the existing tab-launched Adaptive Card `task/submit` flow, participant selection and chat delivery in Teams. See the [compatibility assessment](meeting-participant-roster.md#background-bot-and-meeting-scopes-2026-10-27); schema validation is not runtime certification. |
 | Certification follow-up | Backend invitation text mentions recipients but does not identify the initiating user. | Review user attribution required for user-triggered bot messages; do not conflate notification-only classification with exemption from notification-content rules. Backend implementation remains unchanged by request. |
 | Verify | Configurable tabs now use `groupChat` only; `supportsChannelFeatures` removed; personal static tab and meeting contexts retained. | Test standard meeting installation and upgrades from older manifests, personal dashboard access and absence of channel installation. Explain the narrowed supported surfaces to reviewers and existing users. |
 | Verify | User confirms DreamHost subdomain exists; static build/routes are locally validated. No upload or live hosting verification performed. Backend source CORS includes the origin. | Verify DreamHost web directory, DNS, certificate, Apache `.htaccess`, real asset 404s, route refreshes, framing headers and live backend CORS. Check config/privacy/terms/support and root auth routes. |

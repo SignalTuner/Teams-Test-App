@@ -8,9 +8,11 @@ import { ActivationContext } from "./TemporaryActivationCode";
 import React from "react";
 import * as teamsJs from "@microsoft/teams-js";
 import { initializeTeams } from "./teamsHost";
+import { buildMeetingTabLink, meetingAnalysisOpenRequest } from "./meetingTabNavigation";
 import { PaymentDisclosure, useExternalCommerce } from "./TeamsHostProvider";
 
 import "./App.css";
+import "./MeetingSidePanel.css";
 import "./ConfigPage.css";
 import SettingsPage from "./SettingsPage";
 import AppearanceSelector from "./AppearanceSelector";
@@ -2121,6 +2123,7 @@ function CreditRequiredModal({
 
 // Match the website SignalScoreGauge's center, radius and 250-degree sweep.
 function Dashboard({
+  hostContext,
   analysis,
   apiBaseUrl,
   dashboard,
@@ -2139,6 +2142,7 @@ function Dashboard({
   subscriptionPrompt,
   themePreference,
 }: {
+  hostContext: teamsJs.app.Context | null;
   analysis: AnalysisResult | null;
   apiBaseUrl: string;
   dashboard: DashboardData;
@@ -2163,6 +2167,43 @@ function Dashboard({
   const [signalScoreTrendErrors, setSignalScoreTrendErrors] = React.useState<Record<number, string>>({});
   const [nowMs, setNowMs] = React.useState(Date.now());
   const [meetingAnalysisRequests, setMeetingAnalysisRequests] = React.useState<Record<string, RequestState>>({});
+  const [navigationContext, setNavigationContext] = React.useState(hostContext);
+  const [navigationError, setNavigationError] = React.useState("");
+  const [openingTab, setOpeningTab] = React.useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = React.useState<string | undefined>(undefined);
+  const handledNavigationHint = React.useRef<string | undefined>(undefined);
+  const sidePanel = navigationContext?.page?.frameContext === "sidePanel";
+  const confirmationHint = meetingAnalysisOpenRequest(navigationContext);
+  React.useEffect(() => {
+    if (!confirmationHint || handledNavigationHint.current === confirmationHint) return;
+    handledNavigationHint.current = confirmationHint;
+    setPendingConfirmation(confirmationHint);
+    onNavigate("dashboard");
+  }, [confirmationHint, onNavigate]);
+  React.useEffect(() => { setNavigationContext(hostContext); }, [hostContext]);
+  React.useEffect(() => {
+    let disposed = false;
+    const refresh = () => {
+      if (document.hidden || !hostContext) return;
+      // A cached tab can regain focus with a new deep-link subPageId. Do not
+      // apply another meeting's navigation hint to this authenticated dashboard.
+      void teamsJs.app.getContext().then(next => {
+        if (!disposed && next.meeting?.id === hostContext.meeting?.id && next.chat?.id === hostContext.chat?.id) setNavigationContext(next);
+      }).catch(() => {});
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { disposed = true; window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [hostContext]);
+  async function openMeetingTab(confirmAnalysis = false) {
+    if (openingTab) return;
+    setOpeningTab(true); setNavigationError("");
+    try {
+      await teamsJs.app.openLink(buildMeetingTabLink(navigationContext, confirmAnalysis ? crypto.randomUUID() : undefined));
+    } catch {
+      setNavigationError("The meeting tab could not be opened. Open this meeting's chat and select SignalTuner, or try again.");
+    } finally { setOpeningTab(false); }
+  }
   const user = dashboard.currentUser;
   const participants = React.useMemo(() => sortParticipantsByMeetingRole(dashboard.participants), [dashboard.participants]);
   const activeParticipants = participants.filter((participant) => participant.clientDataStatus === "active");
@@ -2287,7 +2328,7 @@ function Dashboard({
   ]);
 
   return (
-    <main className="pageShell dashboardShell">
+    <main className={`pageShell dashboardShell${sidePanel ? " meetingSidePanel" : ""}`}>
       <DashboardHeader user={user} activePage={activePage} onNavigate={onNavigate} onSignOut={onSignOut} />
 
       {error && <section className="panel panelAlert">{error}</section>}
@@ -2319,7 +2360,7 @@ function Dashboard({
             hasData={meetingScore !== null}
           />
         </div>
-        <div className="meetingHealthMetrics">
+        {!sidePanel && <div className="meetingHealthMetrics">
           <MeetingHealthMetric
             icon={
               <svg className="meetingHealthGroupIcon" viewBox="0 0 24 24" focusable="false">
@@ -2367,11 +2408,14 @@ function Dashboard({
             tone={connectedParticipantCount === 0 ? "neutral" : connectivityIssueCount === 0 ? "good" : "warning"}
             value={String(connectivityIssueCount)}
           />
-        </div>
+        </div>}
         <div className="healthActions">
           <MeetingAnalysisButton key={`${user.userId}:${dashboard.meetingSessionId}`}
             apiBaseUrl={apiBaseUrl} token={sessionToken} userId={user.userId}
-            meetingSessionId={dashboard.meetingSessionId} participants={participants} disabled={isLoading}
+            meetingSessionId={dashboard.meetingSessionId} participants={participants} disabled={isLoading || openingTab}
+            onOpenInTab={sidePanel ? () => void openMeetingTab(true) : undefined}
+            openRequest={pendingConfirmation}
+            onOpenRequestHandled={() => setPendingConfirmation(undefined)}
             onAccepted={results => setMeetingAnalysisRequests(current => ({ ...current,
               ...Object.fromEntries(results.filter(result => result.request).map(result => [
                 `${user.userId}:${dashboard.meetingSessionId}:${result.targetUserId}`, result.request!,
@@ -2386,7 +2430,7 @@ function Dashboard({
             <h2 id="meeting-participants-heading">Meeting Participants</h2>
             <p>{participants.length} {participants.length === 1 ? "participant" : "participants"}</p>
           </div>
-          <div className="buttonRow inlineButtons">
+          {!sidePanel && <div className="buttonRow inlineButtons">
             <button className="secondaryButton participantInviteButton" disabled={isLoading} onClick={onInvite} type="button">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
                 <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -2394,7 +2438,7 @@ function Dashboard({
               </svg>
               Invite
             </button>
-          </div>
+          </div>}
         </div>
 
         {participants.length === 0 && <p className="participantsEmpty">No meeting participants are available yet.</p>}
@@ -2409,6 +2453,19 @@ function Dashboard({
               : null;
             const issues = hasActiveAnalysisSession ? getParticipantIssues(analysis, participant.userId) : [];
             const analysisCoversParticipant = Boolean(telemetry);
+
+            if (sidePanel) return <li key={`${user.userId}:${dashboard.meetingSessionId}:${participant.userId}`} className="participantListItem sidePanelParticipant">
+              <div className="sidePanelParticipantIdentity">
+                <h3 className="participantName">{getParticipantName(participant)}</h3>
+                {participant.email && <p className="participantEmail">{participant.email}</p>}
+              </div>
+              <div className="sidePanelParticipantActions">
+                <div className="sidePanelSignalScore"><span>Signal Score</span><CompactSignalScoreDisplay
+                  score={participant.signalScore} overallStatus={participant.overallStatus} hasData={hasData} /></div>
+                <RemoteAnalysisButton apiBaseUrl={apiBaseUrl} token={sessionToken} targetUserId={participant.userId}
+                  targetName={getParticipantName(participant)} meetingSessionId={dashboard.meetingSessionId} />
+              </div>
+            </li>;
 
             return (
               <RemoteAnalysisButton key={`${user.userId}:${dashboard.meetingSessionId}:${participant.userId}`} apiBaseUrl={apiBaseUrl} token={sessionToken}
@@ -2467,6 +2524,10 @@ function Dashboard({
       </section>
 
       <MeetingServiceStatus apiBaseUrl={apiBaseUrl} token={sessionToken} />
+      {sidePanel && <div className="sidePanelOpenTab">
+        <button className="secondaryButton" type="button" disabled={openingTab} onClick={() => void openMeetingTab()}>Open in Teams tab</button>
+        {navigationError && <p role="alert">{navigationError}</p>}
+      </div>}
         </>
       )}
 
@@ -2522,6 +2583,7 @@ export default function App() {
   );
   const [dashboard, setDashboard] = React.useState<DashboardData | null>(null);
   const [meetingContext, setMeetingContext] = React.useState<TeamsMeetingContext | null>(null);
+  const [hostContext, setHostContext] = React.useState<teamsJs.app.Context | null>(null);
   const [analysis, setAnalysis] = React.useState<AnalysisResult | null>(null);
   const [subscriptionPrompt, setSubscriptionPrompt] = React.useState<SubscriptionPrompt | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -2676,6 +2738,7 @@ export default function App() {
         }
 
         setIsRunningInTeams(true);
+        setHostContext(context);
         const nextTheme = mapTeamsTheme(context.app.theme);
         setTeamsTheme(nextTheme);
         disposeThemeSubscription = subscribeToTeamsThemeChanges(setTeamsTheme);
@@ -3268,6 +3331,7 @@ export default function App() {
       )}
       {!shouldShowClientPrompt && (
         <Dashboard
+          hostContext={hostContext}
           analysis={analysis}
           apiBaseUrl={apiBaseUrl}
           activePage={activePage}

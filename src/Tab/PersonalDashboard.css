@@ -26,6 +26,8 @@
 .personalAccount dt { opacity: .75; font-size: .85rem; }
 .personalAccount dd { margin: 6px 0 0; overflow-wrap: anywhere; }
 .personalAnalysisResult { margin-block: 20px; }
+.remoteAnalysisInlineBody .personalAnalysisStatus { margin: 0; font-size: 13px; font-weight: 400; }
+.personalAnalysisStatus ~ .live-analysis { margin-top: 8px; }
 .personalDashboard .buttonRow { flex-wrap: wrap; }
 .personalDashboard .textButton { font: inherit; color: var(--ink); background: transparent; border: 0; padding: 8px 0; text-decoration: underline; cursor: pointer; }
 .personalDashboard .textButton:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }

@@ -113,7 +113,7 @@ export default function SettingsPage({ user, apiBaseUrl, token, themePreference,
         {account && <>
           <div className="settings-account-grid">
             <div className="settings-credit-summary">
-              <p className="settings-metric-label">{allowCommerce ? "Credit balance" : "Available report allowance"}</p>
+              <p className="settings-metric-label">{allowCommerce ? "Credit balance" : "Available credits"}</p>
               <p className="settings-credit-value">{(allowCommerce ? account.purchasedCredits : account.availableReports).toLocaleString()} <span>{allowCommerce ? "credits" : "reports"}</span></p>
               <p>Each report uses one unit of your report allowance.</p>
               <p>{account.teamAllocatedCredits || 0} allocated team credits &middot; {account.teamFundAvailable || 0} general fund credits available</p>

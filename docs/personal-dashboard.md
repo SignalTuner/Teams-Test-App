@@ -29,6 +29,9 @@ unmount and account-keyed components isolate data and pending analyses.
   Connecting or choosing Continue without syncing opens the dashboard; disconnected
   users can reopen setup later. A telemetry-read failure does not trigger setup.
 - `AnalysisSection`: shared disclosure layout for personal and meeting charts.
+- `AnalysisConfirmationDialog`: shared individual-analysis confirmation shell,
+  wording, credit balance, error styling and close controls. Personal Analysis +
+  Report opens this dialog without submitting; Request analysis confirms it.
 - Existing Settings, Support, AppearanceSelector, MeetingServiceStatus,
   LiveAnalysisCharts, AnalysisCountdown and RemoteAnalysisButton are reused.
 
@@ -40,10 +43,27 @@ than two minutes are stale; missing values never fall back to zero or Healthy.
 
 Personal connectivity uses the same participant identity, score/category row and
 disclosure styling as the meeting dashboard. Test Analysis and Analysis + Report
-sit at the right, with available report allowance underneath. The analysis disclosure sits
+sit at the right, with Available credits underneath. The analysis disclosure sits
 directly below that row; there is no separate Analysis card, last-update label or
 telemetry-details toggle. Active requests and recovery errors open the disclosure
 automatically. This layout change requires only Teams frontend deployment.
+
+The personal analysis disclosure uses `Analysis for <display name>` and the same
+compact running status/countdown and Canceled indicator as the meeting view.
+Telemetry follows immediately; cancellation and report-delivery controls remain
+below the charts. Refresh status, Refresh analysis status and the Credit status
+label/value are removed. The redundant Test/Report heading is removed;
+Test completion still explicitly says no report was generated or credit used.
+Both analysis buttons remain enabled when idle, including with zero/unknown
+credits, a disconnected/older desktop, or a previous error. Pending/Approved/
+Running analysis and an in-flight action disable them to prevent overlap. Clicking
+an action checks the latest analysis and desktop capability and shows actionable
+feedback; enabling a button does not bypass backend entitlement enforcement.
+Idle analysis status refreshes every thirty seconds and on focus/visibility;
+active analysis retains its two-second polling. There is no automatic submission.
+Test starts directly. Report requires the same explicit confirmation as in-meeting
+individual analysis and closes on acceptance. Opening/closing the dialog alone
+never creates a request or spends credits.
 
 The [Teams mobile commerce policy](teams-mobile-commerce.md) hides direct and
 indirect purchase routes on iOS/Android/iPadOS using TeamsJS host context. Existing
@@ -67,11 +87,14 @@ latest with `mode=Any`, creation, live status, cancel and retry-delivery; and
 Self-analysis submits the authenticated target with `meetingSessionId: null`, mode
 Test or Report and a request ID. The exact operation is saved in account-scoped
 sessionStorage **before sending**. Storage failure prevents sending; uncertain
-responses/reloads retry the same ID/body. Sign-out retains uncertain operation IDs
+responses/reloads recover through the normal action buttons using the same ID/body
+if read-only checks cannot find the request. A confirmed existing active request
+is restored without another POST; a pending operation cannot switch modes.
+Sign-out retains uncertain operation IDs
 for safe recovery by the same account, never another account. New analyses require
 a successful prior-status check. Backend ownership, conflict, approval, capability
-and billing checks remain authoritative. Test is free and capability-gated; Report
-requires a known positive balance. Active status polls every two seconds and
+and billing checks remain authoritative. Test is free and capability-checked on
+click; Report credit eligibility remains enforced by the backend. Active status polls every two seconds and
 pending delivery every ten seconds while visible. Provider acceptance is not
 described as confirmed inbox delivery.
 
@@ -128,6 +151,17 @@ the meeting app. This follow-up changes only Teams frontend behavior; it needs n
 additional backend, schema, Azure configuration or manifest change.
 
 ## Deployment impact
+
+Personal analysis controls follow-up (2026-10-28): removed the personal-view
+refresh controls and Credit status display, and reused the in-meeting individual
+confirmation dialog for Analysis + Report. Idle actions remain enabled; active
+analysis or an in-flight action prevents duplicate submissions. Validation passed
+TypeScript, 24 personal-data/live-analysis unit tests, all 48 browser scenarios,
+and the DreamHost production build. The confirmation screenshot was reviewed.
+This follow-up requires only a Teams static frontend upload; it adds no backend,
+database, Azure configuration, manifest, or package change. No upload was performed;
+hosted Teams verification remains separate. The original feature's broader
+deployment prerequisites are recorded below.
 
 - Changed projects: Teams app and backend.
 - Dependent projects: website retains its signal route; WPF supplies existing Test

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const { startStaticServer } = require("./dreamhostServer.cjs");
 
-async function scenario(t) {
+async function scenario(t, state = { request: null }) {
   const server = await startStaticServer(); t.after(server.close);
   const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {}) });
   t.after(() => browser.close());
@@ -20,7 +20,8 @@ async function scenario(t) {
       : url.pathname.endsWith("/auth/me") ? user
       : url.pathname.endsWith("/credits/account") ? { purchasedCredits: 2, availableReports: 2, subscription: null }
       : url.pathname.endsWith("/current-device") ? { connected: true, supportsTestAnalysis: true }
-      : url.pathname.endsWith("/remote-analysis/latest") ? { request: null }
+      : url.pathname.endsWith("/remote-analysis/latest") ? { request: state.request }
+      : url.pathname.includes("/remote-analysis/") ? state.request
       : url.pathname.endsWith("/meetings") ? { meetings: [] }
       : url.pathname.includes("GetServiceIncidents") ? []
       : url.pathname.includes("GetServiceStatus") ? { CurrentStatus: "Operational", DisplayName: "Microsoft Teams" }
@@ -43,6 +44,31 @@ test("compiled static app renders direct entry/legal/config/auth routes and surv
     await page.reload(); await page.locator(selector).waitFor();
   }
   assert.ok(assets.length > 0); assert.ok(assets.every(asset => asset.status === 200));
+  assert.deepEqual(errors, []);
+});
+
+test("static dashboard renders complete jitter histories across live updates and reloads", async t => {
+  const state = { request: { requestId: "synthetic-jitter-analysis", mode: "Test", state: "Running", creditState: "None", deliveries: [],
+    liveTelemetry: { ageSeconds: 0, snapshot: { elapsedSeconds: 20, jitterMs: 9, jitterHistoryMs: [0, 15, 30, null, 50, 9] } } } };
+  const { page, origin, errors } = await scenario(t, state);
+  await page.addInitScript(() => localStorage.setItem("signaltunerSessionToken", "synthetic-session"));
+  await page.goto(origin + "/tabs/home");
+  const chart = page.locator(".live-metric--jitterHistoryMs svg");
+  await chart.waitFor();
+  await page.waitForFunction(() => document.querySelectorAll(".live-metric--jitterHistoryMs circle").length === 5);
+  assert.equal(await chart.locator("g > line").count(), 3);
+
+  // A fresh snapshot replaces the window, including real zeros and missing probes.
+  state.request.liveTelemetry.snapshot = { elapsedSeconds: 22, jitterMs: 5, jitterHistoryMs: [0, 15, 30, null, 50, 9, 0, 5] };
+  await page.waitForFunction(() => document.querySelectorAll(".live-metric--jitterHistoryMs circle").length === 7);
+  assert.match(await chart.getAttribute("aria-label"), /5 ms/);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll(".live-metric--jitterHistoryMs circle").length === 7);
+
+  // Legacy telemetry supplies only one real measurement; polling cannot invent history.
+  state.request.liveTelemetry.snapshot = { elapsedSeconds: 24, jitterMs: 4 };
+  await page.waitForFunction(() => document.querySelectorAll(".live-metric--jitterHistoryMs circle").length === 1);
+  assert.match(await chart.getAttribute("aria-label"), /4 ms/);
   assert.deepEqual(errors, []);
 });
 

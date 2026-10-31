@@ -13,6 +13,25 @@ loaded.filename = filename;
 loaded.paths = module.paths;
 loaded._compile(compiled, filename);
 const { activeMeetingParticipantIds, readMeetingAnalysisOperation, validateMeetingAnalysisResults, requestMeetingAnalysis } = loaded.exports;
+const { buildMeetingTabLink, meetingAnalysisOpenRequest } = require("./loadTabModule.cjs")("meetingTabNavigation.ts");
+
+test("meeting tab links retain deployed app/page/chat identity and force the full tab", () => {
+  const context = { app: { appId: { toString: () => "installed-app" } }, page: { id: "page/with space", frameContext: "sidePanel" },
+    chat: { id: "synthetic/chat?&id" }, meeting: { id: "synthetic-meeting" }, user: { tenant: { id: "synthetic-tenant" } } };
+  const link = new URL(buildMeetingTabLink(context, "11111111-1111-4111-8111-111111111111"));
+  assert.equal(link.origin, "https://teams.microsoft.com");
+  assert.equal(link.pathname, "/l/entity/installed-app/page%2Fwith%20space");
+  assert.equal(link.searchParams.get("openInMeeting"), "false");
+  assert.equal(link.searchParams.get("tenantId"), "synthetic-tenant");
+  const target = JSON.parse(link.searchParams.get("context"));
+  assert.equal(target.chatId, context.chat.id); assert.equal(target.contextType, "chat");
+  assert.equal(meetingAnalysisOpenRequest({ ...context, page: { frameContext: "content", subPageId: target.subEntityId } }), target.subEntityId);
+  assert.equal(meetingAnalysisOpenRequest({ ...context, page: { frameContext: "sidePanel", subPageId: target.subEntityId } }), undefined);
+  assert.equal(JSON.parse(new URL(buildMeetingTabLink(context)).searchParams.get("context")).subEntityId, undefined);
+  for (const missing of [null, { ...context, app: {} }, { ...context, page: {} }, { ...context, chat: {} }, { ...context, meeting: {} }])
+    assert.throws(() => buildMeetingTabLink(missing));
+  assert.equal(meetingAnalysisOpenRequest({ ...context, page: { frameContext: "content", subPageId: "start-analysis" } }), undefined);
+});
 const originalFetch = global.fetch;
 afterEach(() => { global.fetch = originalFetch; });
 const operation = { requestId: "11111111111141118111111111111111", participantUserIds: [1, 2] };

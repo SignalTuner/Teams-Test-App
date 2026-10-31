@@ -25,10 +25,22 @@ function load(name) {
 }
 const { createPersonalApi, signalPresentation, teamsHistory, readPendingAnalysis, pendingAnalysisKey, sendSelfAnalysis } = load("personalDashboardData.ts");
 const Summary = load("ConnectivitySummary.tsx").default;
+const { analysisRateLimitMessage, deviceAnalysisLimitMessage } = load("analysisErrors.ts");
 const originalFetch = global.fetch;
 afterEach(() => global.fetch = originalFetch);
 const storage = () => { const values = new Map(); return { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
 const operation = { requestId: "11111111111141118111111111111111", targetUserId: 17, meetingSessionId: null, mode: "Report" };
+
+test("analysis rate limits preserve public device feedback without exposing arbitrary server text", async () => {
+  for (const message of [deviceAnalysisLimitMessage, "Please wait before requesting another analysis.", "private diagnostic details", null]) {
+    global.fetch = async () => Response.json({ message }, { status: 429 });
+    await assert.rejects(createPersonalApi("https://example.invalid", "synthetic", () => assert.fail())("remote-analysis", { method: "POST" }),
+      error => error.status === 429 && error.message === analysisRateLimitMessage(message) && !error.message.includes("private"));
+  }
+  global.fetch = async () => new Response("not JSON", { status: 429 });
+  await assert.rejects(createPersonalApi("https://example.invalid", "synthetic", () => assert.fail())("remote-analysis"),
+    error => error.status === 429 && error.message === "Please wait before requesting another analysis.");
+});
 
 test("authenticated reads use the supplied account token, cancellation, and no-store", async () => {
   const signal = new AbortController().signal;

@@ -6,6 +6,7 @@
   --blue: #668DB0;
   --teams: #6264A7;
   --ink: #172033;
+  --error-text: #172033;
   --muted: #61708A;
   --line: #DDE4EE;
   --panel: #FFFFFF;
@@ -21,6 +22,7 @@
 
 :root[data-teams-theme="dark"] {
   --ink: #F5F7FB;
+  --error-text: #FFFFFF;
   --muted: #B8C2D4;
   --line: #3A4558;
   --panel: #1F2937;
@@ -36,6 +38,7 @@
 
 :root[data-teams-theme="contrast"] {
   --ink: #FFFFFF;
+  --error-text: #FFFFFF;
   --muted: #FFFFFF;
   --line: #FFFFFF;
   --panel: #000000;
@@ -58,6 +61,19 @@ body {
   color: var(--ink);
   background: var(--canvas);
   font-family: Lato, "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+
+/* Shared by every dialog and by inline analysis in personal/meeting views.
+   Outrank dialog paragraph colors so error text keeps its intended contrast. */
+:root .remoteAnalysisError[role="alert"],
+:root :is(dialog, [role="dialog"]) [role="alert"] {
+  display: block;
+  color: var(--error-text);
+  background: transparent;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  padding: 10px;
+  overflow-wrap: anywhere;
 }
 
 button,

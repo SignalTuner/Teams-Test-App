@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { remoteAnalysisLabels } from "./RemoteAnalysisButton";
 import { activeMeetingParticipantIds, readMeetingAnalysisOperation, requestMeetingAnalysis,
   type MeetingAnalysisOperation, type MeetingAnalysisResult } from "./meetingAnalysis";
 import "./MeetingAnalysisButton.css";
 
 type Props = {
   apiBaseUrl: string; token: string; userId: number; meetingSessionId: number; disabled?: boolean;
-  participants: Array<{ userId: number; displayName: string | null; clientDataStatus: string }>;
+  participants: Array<{ userId: number; displayName: string | null; email: string | null; clientDataStatus: string }>;
   onAccepted: (results: MeetingAnalysisResult[]) => void;
+  onOpenInTab?: () => void;
+  openRequest?: string;
+  onOpenRequestHandled?: () => void;
 };
 
-export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meetingSessionId, participants, disabled, onAccepted }: Props) {
+export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meetingSessionId, participants, disabled, onAccepted, onOpenInTab, openRequest, onOpenRequestHandled }: Props) {
   const storageKey = `teamsMeetingAnalysis:${userId}:${meetingSessionId}`;
   const [saved] = useState(() => {
     try { return { operation: readMeetingAnalysisOperation(sessionStorage.getItem(storageKey)), error: "" }; }
@@ -22,6 +24,7 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(saved.error);
   const [results, setResults] = useState<MeetingAnalysisResult[]>([]);
+  const [startedIds, setStartedIds] = useState<number[]>([]);
   const [credits, setCredits] = useState<number | null>(null);
   const [loadingCredits, setLoadingCredits] = useState(true);
   const [creditRefresh, setCreditRefresh] = useState(0);
@@ -30,6 +33,16 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
   const mounted = useRef(true);
   const controller = useRef<AbortController | null>(null);
   const activeIds = activeMeetingParticipantIds(participants);
+  const selectedIds = operation?.participantUserIds ?? targets.filter(id => activeIds.includes(id) && !startedIds.includes(id));
+  const rosterIds = [...new Set([...participants.filter(p => Number.isSafeInteger(p.userId) && p.userId > 0).map(p => p.userId), ...selectedIds])];
+  const handledOpenRequest = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!openRequest || onOpenInTab || disabled || handledOpenRequest.current === openRequest) return;
+    handledOpenRequest.current = openRequest;
+    if (!operation) { setTargets(activeIds); setStartedIds([]); setResults([]); setError(saved.error); }
+    setOpen(true);
+    onOpenRequestHandled?.();
+  }, [openRequest, onOpenInTab, disabled, operation, activeIds, onOpenRequestHandled]);
 
   useEffect(() => {
     mounted.current = true;
@@ -71,13 +84,13 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
   }, [open, apiBaseUrl, token, creditRefresh]);
 
   async function start() {
-    if (inFlight.current || disabled || saved.error || !token || !targets.length || targets.length > 1000) return;
-    const next = operation || { requestId: crypto.randomUUID().replace(/-/g, ""), participantUserIds: targets };
+    if (inFlight.current || disabled || saved.error || !token || !selectedIds.length || selectedIds.length > 1000) return;
+    const next = operation || { requestId: crypto.randomUUID().replace(/-/g, ""), participantUserIds: selectedIds };
     // Persist before any request. Reload/retry must never create a second purchase.
     try { sessionStorage.setItem(storageKey, JSON.stringify(next)); }
     catch { setError("The request could not be saved in this tab. Allow tab storage before starting an analysis."); return; }
     setOperation(next);
-    inFlight.current = true; setBusy(true); setError("");
+    inFlight.current = true; setBusy(true); setError(""); setResults([]);
     const abort = new AbortController();
     controller.current = abort;
     const timeout = setTimeout(() => abort.abort(), 60000);
@@ -85,6 +98,16 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
       const accepted = await requestMeetingAnalysis(apiBaseUrl, token, meetingSessionId, next, abort.signal);
       if (!mounted.current) return;
       setResults(accepted); onAccepted(accepted);
+      // A complete response resolves the operation. Future explicit starts use
+      // a fresh ID; only uncertain submissions retain the saved ID and roster.
+      sessionStorage.removeItem(storageKey);
+      setOperation(null);
+      const newlyStarted = accepted.filter(result => result.request).map(result => result.targetUserId);
+      setStartedIds(current => [...new Set([...current, ...newlyStarted])]);
+      setTargets(current => current.filter(id => !newlyStarted.includes(id)));
+      if (accepted.some(result => !result.request && result.statusCode === 429)) setOpen(true);
+      else if (newlyStarted.length) setOpen(false);
+      else setError("No participant analyses could be started. Check that the selected desktops are connected before starting again.");
     } catch (reason) {
       if (mounted.current) setError(reason instanceof Error && reason.name !== "AbortError" ? reason.message
         : "The response could not be confirmed. Retry this same meeting analysis; accepted requests keep running.");
@@ -94,53 +117,69 @@ export default function MeetingAnalysisButton({ apiBaseUrl, token, userId, meeti
     }
   }
 
-  function newAnalysis() {
-    try { sessionStorage.removeItem(storageKey); }
-    catch { setError("The saved request could not be cleared. Allow tab storage and try again."); return; }
-    setOperation(null); setTargets(activeIds); setResults([]); setError("");
-  }
-
-  const targetCount = operation?.participantUserIds.length || targets.length;
+  const targetCount = selectedIds.length;
   const acceptedCount = results.filter(result => result.request).length;
-  const allAccepted = results.length > 0 && acceptedCount === results.length;
+  const rateLimited = results.filter(result => !result.request && result.statusCode === 429);
   return <>
     <div className="meetingAnalysisAction">
       <div className="meetingAnalysisCreditBalance" aria-live="polite" aria-atomic="true">
-        Available report allowance: <strong>{loadingCredits ? "Loading..." : credits === null ? "Unavailable" : credits.toLocaleString()}</strong>
+        Available credits: <strong>{loadingCredits ? "Loading..." : credits === null ? "Unavailable" : credits.toLocaleString()}</strong>
       </div>
       <button type="button" className="meetingAnalyzeButton" disabled={disabled || busy || (!operation && activeIds.length === 0)}
-        aria-haspopup="dialog" onClick={() => { if (!operation) setTargets(activeIds); setOpen(true); }}>
+        aria-haspopup={onOpenInTab ? undefined : "dialog"} title={onOpenInTab ? "Open the meeting tab to confirm analysis" : undefined}
+        onClick={() => { if (onOpenInTab) { onOpenInTab(); return; } if (!operation) { setTargets(activeIds); setStartedIds([]); setResults([]); setError(saved.error); } setOpen(true); }}>
         Analyze Meeting
       </button>
     </div>
+    {!open && results.some(result => !result.request) && <p role="status" className="meetingAnalysisPartialResult">
+      {acceptedCount} of {results.length} requests accepted. Open Analyze Meeting to select participants and start an analysis.
+    </p>}
     {open && <dialog ref={dialog} className="remoteAnalysisDialog meetingAnalysisDialog"
       aria-labelledby="meeting-analysis-title" onCancel={event => { if (busy) event.preventDefault(); else setOpen(false); }} onClose={() => setOpen(false)}>
       <header><h2 id="meeting-analysis-title">Analyze Meeting</h2>
         <button type="button" disabled={busy} aria-label="Close meeting analysis" onClick={() => setOpen(false)}>Close</button>
       </header>
-      <p>Request a five-minute analysis for {targetCount} active {targetCount === 1 ? "participant" : "participants"}, including you if your desktop is active.</p>
-      <p>Each completed report is emailed to you and its participant. This uses one unit of report allowance per report, up to <strong>{targetCount} units</strong>.</p>
-      <p>Existing team roles and device approval preferences apply. A participant who disconnects or has a pending analysis may be unavailable.</p>
-      <p>Available report allowance: {loadingCredits ? "Loading..." : credits ?? "Unavailable"}</p>
+      <p>Connectivity Health Analysis runs for 5 minutes, starting when the user grants permission on the SignalTuner desktop client.</p>
+      <p>Upon completion, a Connectivity Health Report will be emailed to you and the analyzed user.</p>
+      <p>Each Connectivity Health Report requires 1 credit.</p>
+      <p>Analysis disrupted by permission denial, cancellation, or disconnection will not deduct credits.</p>
+      <p className="meetingAnalysisAvailable" aria-live="polite" aria-atomic="true">Available credits: <strong>{loadingCredits ? "Loading..." : credits ?? "Unavailable"}</strong></p>
+      <fieldset className="meetingAnalysisParticipants" disabled={busy || Boolean(operation)}>
+        <legend>Participants</legend>
+        {rosterIds.map(id => {
+          const participant = participants.find(p => p.userId === id);
+          const unavailable = !activeIds.includes(id);
+          const alreadyStarted = startedIds.includes(id);
+          return <label key={id} className="meetingAnalysisParticipant">
+            <span>{participant?.email || participant?.displayName || "Participant unavailable"}
+              {alreadyStarted ? <small>Analysis requested</small> : unavailable && !operation && <small>Desktop not connected</small>}
+            </span>
+            <input type="checkbox" checked={selectedIds.includes(id)} disabled={(unavailable || alreadyStarted) && !operation}
+              onChange={event => setTargets(current => event.target.checked ? [...new Set([...current, id])] : current.filter(target => target !== id))} />
+          </label>;
+        })}
+        {!rosterIds.length && <p>No participants are available for analysis.</p>}
+      </fieldset>
+      <p className="meetingAnalysisRequired" aria-live="polite" aria-atomic="true">Credits required: <strong>{targetCount}</strong></p>
       {credits === 0 && <p>No report allowance is available. Test Analysis remains available from your personal dashboard on supported connected desktops.</p>}
       {targetCount > 1000 && <p role="alert">Meeting analysis supports up to 1000 active participants per run.</p>}
-      {operation && <p>This run keeps its original participants. Retrying recovers accepted requests and retries only participants without a request.</p>}
+      {operation && <p>The previous submission is unconfirmed. Start meeting analysis will safely confirm that same selection before another analysis can be started.</p>}
       {error && <p role="alert" className="remoteAnalysisError">{error}</p>}
-      {busy && <p role="status">Requesting participant analyses...</p>}
-      {results.length > 0 && <>
-        <p role="status">{acceptedCount} of {results.length} requests accepted. Open Analyze beside a participant for current progress or cancellation.</p>
-        <ul className="meetingAnalysisResults" aria-label="Meeting analysis results">
-          {results.map(result => <li key={result.targetUserId}>
-            <strong>{participants.find(p => p.userId === result.targetUserId)?.displayName || "Participant"}</strong>
-            <span>{result.statusCode === 402 ? "No report allowance is available" : result.error || remoteAnalysisLabels[result.request!.state] || result.request!.state}</span>
-          </li>)}
-        </ul>
+      {rateLimited.length > 0 && <>
+        {acceptedCount > 0 && <p role="status">{acceptedCount} participant {acceptedCount === 1 ? "analysis was" : "analyses were"} requested. These participants are marked above and will not be submitted again.</p>}
+        <div role="alert" className="remoteAnalysisError">
+          The following users cannot be analyzed due to too many requests. Deselect them from the list above or try again later.
+          <ul>{rateLimited.map(result => {
+            const participant = participants.find(p => p.userId === result.targetUserId);
+            return <li key={result.targetUserId}>{participant?.email || participant?.displayName || "Participant unavailable"}</li>;
+          })}</ul>
+        </div>
       </>}
+      {busy && <p role="status">Requesting participant analyses...</p>}
       <footer>
-        {!allAccepted && <button type="button" className="meetingAnalyzeButton" disabled={busy || disabled || Boolean(saved.error) || !targetCount || targetCount > 1000}
-          onClick={() => void start()}>{busy ? "Requesting..." : operation ? "Retry meeting analysis" : "Start meeting analysis"}</button>}
-        {results.length > 0 && !error && <button type="button" disabled={busy || activeIds.length === 0} onClick={newAnalysis}>New meeting analysis</button>}
-        <button type="button" disabled={busy} onClick={() => setOpen(false)}>{allAccepted ? "Done" : "Close"}</button>
+        <button type="button" className="meetingAnalyzeButton" disabled={busy || disabled || Boolean(saved.error) || !targetCount || targetCount > 1000}
+          onClick={() => void start()}>{busy ? "Requesting..." : "Start meeting analysis"}</button>
+        <button type="button" disabled={busy} onClick={() => setOpen(false)}>Close</button>
       </footer>
     </dialog>}
   </>;

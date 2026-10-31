@@ -57,10 +57,10 @@ export default function PersonalDashboard(props: Props) {
         <section className="panel participantsPanel" aria-labelledby="personal-health-title">
           <div className="participantsToolbar"><div><h2 id="personal-health-title">Your Connectivity Health</h2>
             <p>{account.error ? "Desktop connection unavailable" : account.loading ? "Checking your desktop…" : connected ? "Desktop connected" : "Desktop disconnected"}</p></div>
-            <button className="secondaryButton" onClick={() => void refreshConnection()}>Refresh status</button></div>
+            </div>
           {telemetry.loading && <p className="participantsEmpty" role="status">Loading your connectivity…</p>}
           {telemetry.error && <p className="participantsEmpty" role="alert">{telemetry.error}</p>}
-          <PersonalAnalysis api={api} userId={user.userId} credits={credits} onCreditsChanged={creditAccount.refresh}>
+          <PersonalAnalysis api={api} userId={user.userId} displayName={user.displayName || "you"} credits={credits} loadingCredits={creditAccount.loading} onCreditsChanged={creditAccount.refresh}>
           <div className="participantIdentity">
             <span className="participantAvatar" aria-hidden="true">{getInitials(user.displayName, user.email)}</span>
             <div><h3 className="participantName">{user.displayName || "You"}</h3>
